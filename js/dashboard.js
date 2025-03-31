@@ -436,36 +436,6 @@ async function loadStudentsForAssignment() {
     });
 }
 
-function loadStudentsForAssignment() {
-    const studentSelect = document.getElementById('student-select');
-    
-    // Fetch students from Firestore
-    firebase.firestore().collection('users')
-        .where('role', '==', 'student')
-        .get()
-        .then((querySnapshot) => {
-            studentSelect.innerHTML = '<option value="">Select a student</option>';
-            
-            // Check if any students exist
-            if (querySnapshot.empty) {
-                studentSelect.innerHTML = '<option>No students found</option>';
-                return;
-            }
-
-            querySnapshot.forEach((doc) => {
-                const student = doc.data();
-                const option = document.createElement('option');
-                option.value = doc.id;
-                option.textContent = `${student.name || 'Unknown'} (${student.email})`;
-                studentSelect.appendChild(option);
-            });
-        })
-        .catch((error) => {
-            console.error('Error loading students:', error);
-            studentSelect.innerHTML = '<option>Failed to load students</option>';
-        });
-}
-
 async function confirmBookAssignment(bookId) {
     const studentSelect = document.getElementById('student-select');
     const studentId = studentSelect.value;
