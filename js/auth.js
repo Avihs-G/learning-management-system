@@ -1,152 +1,137 @@
-// Ensure Supabase is loaded first
-if (typeof supabase === "undefined") {
-    console.error("Supabase library is not loaded.");
-}
-
 // Initialize Supabase
 const SUPABASE_URL = "https://xrnqvtsjmtbxgkdvykrn.supabase.co";
 const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhybnF2dHNqbXRieGdrZHZ5a3JuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM0MDM4NzIsImV4cCI6MjA1ODk3OTg3Mn0.TX-krSoOERfe1AiWAVj5hldgvVRZMLzMBcS4yxJuk1w";
 
-const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+if (typeof supabase === "undefined") {
+    var supabase = window.supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+}
 
-// Sign-up function
+// Function to sign up new users
 async function signup() {
-    const email = document.getElementById("email").value;
-    const password = document.getElementById("password").value;
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
 
     if (!email || !password) {
-        alert("Please enter both email and password");
+        alert('Please enter both email and password');
         return;
     }
 
-    if (email.toLowerCase().includes("admin")) {
-        alert("Admin accounts cannot be created this way.");
+    if (email.toLowerCase().includes('admin')) {
+        alert('Admin accounts cannot be created through this method.');
         return;
     }
 
     const { data, error } = await supabase.auth.signUp({ email, password });
 
     if (error) {
-        console.error("Signup Error:", error.message);
-        alert("Signup failed: " + error.message);
+        console.error('Signup Error:', error.message);
+        alert('Signup failed: ' + error.message);
         return;
     }
 
     const role = determineUserRole(email);
 
-    // Store user role in Supabase
     const { error: dbError } = await supabase
-        .from("users")
-        .insert([{ id: data.user.id, email: email, role: role, created_at: new Date() }]);
+        .from('users')
+        .insert([{ id: data.user?.id, email, role, created_at: new Date().toISOString() }]);
 
     if (dbError) {
-        console.error("Database Error:", dbError.message);
-        alert("Error storing user data.");
+        console.error('Database Error:', dbError.message);
+        alert('Error storing user data.');
         return;
     }
 
-    alert("Account created! Check your email for verification.");
+    alert('Account created successfully. Check your email for verification.');
 }
 
-// Login function
+// Function to log in users
 async function login() {
-    const email = document.getElementById("email").value;
-    const password = document.getElementById("password").value;
-
-    if (!email || !password) {
-        alert("Please enter both email and password");
-        return;
-    }
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
 
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {
-        console.error("Login Error:", error.message);
-        alert("Login failed: " + error.message);
-        return;
-    }
-
-    const user = data.user;
-
-    if (!user) {
-        alert("Login failed. No user data received.");
+        console.error('Login Error:', error.message);
+        alert('Login failed: ' + error.message);
         return;
     }
 
     // Fetch user role from Supabase
     const { data: userData, error: roleError } = await supabase
-        .from("users")
-        .select("role")
-        .eq("id", user.id)
+        .from('users')
+        .select('role')
+        .eq('id', data.user?.id)
         .single();
 
     if (roleError || !userData) {
-        console.error("Role Fetch Error:", roleError?.message);
-        alert("User role not found.");
+        console.error('Role Fetch Error:', roleError?.message || "User role not found.");
+        alert('Login failed: User role not found.');
         return;
     }
 
-    localStorage.setItem("userRole", userData.role);
+    localStorage.setItem('userRole', userData.role);
 
-    alert("Login successful!");
-    window.location.href = "dashboard.html";
+    alert('Login successful!');
+    window.location.href = 'dashboard.html';
 }
 
-// Determine user role
+// Function to determine user role based on email
 function determineUserRole(email) {
-    const adminEmails = ["admin@avihs-g.github.io"];
-    const teacherEmails = ["teacher@avihs-g.github.io"];
+    const adminEmails = ['admin@avihs-g.github.io'];
+    const teacherEmails = ['teacher@avihs-g.github.io'];
 
     const lowercaseEmail = email.toLowerCase();
 
-    if (adminEmails.includes(lowercaseEmail)) return "admin";
-    if (teacherEmails.includes(lowercaseEmail)) return "teacher";
+    if (adminEmails.includes(lowercaseEmail)) {
+        return 'admin';
+    }
+    if (teacherEmails.includes(lowercaseEmail)) {
+        return 'teacher';
+    }
 
-    return "student";
+    return 'student';
 }
 
-// Logout function
+// Function to log out users
 async function logout() {
     const { error } = await supabase.auth.signOut();
-
     if (error) {
-        console.error("Logout Error:", error.message);
-        alert("Logout failed: " + error.message);
+        console.error('Logout Error:', error.message);
+        alert('Logout failed: ' + error.message);
         return;
     }
 
-    localStorage.removeItem("userRole");
-    window.location.href = "index.html";
+    localStorage.removeItem('userRole');
+    window.location.href = 'index.html';
 }
 
-// Authentication check
+// Function to check authentication state
 async function checkAuthState() {
-    const { data, error } = await supabase.auth.getSession();
+    const { data, error } = await supabase.auth.getUser();
 
-    if (error || !data.session) {
-        window.location.href = "index.html"; // Redirect to login page if not authenticated
+    if (error || !data?.user) {
+        window.location.href = 'index.html';
         return;
     }
-
-    const user = data.session.user;
 
     // Fetch user role
     const { data: userData, error: roleError } = await supabase
-        .from("users")
-        .select("role")
-        .eq("id", user.id)
+        .from('users')
+        .select('role')
+        .eq('id', data.user.id)
         .single();
 
     if (roleError || !userData) {
-        console.error("Role Fetch Error:", roleError?.message);
+        console.error('Role Fetch Error:', roleError?.message || "User role not found.");
         return;
     }
 
-    document.getElementById("user-welcome").textContent = `Welcome, ${user.email}`;
+    document.getElementById('user-welcome').textContent = `Welcome, ${data.user.email}`;
     loadDashboardContent(userData.role);
 }
 
-// Run auth check on dashboard page
-if (window.location.pathname.includes("dashboard.html")) {
+// Check authentication on dashboard page
+if (window.location.pathname.includes('dashboard.html')) {
     checkAuthState();
 }
