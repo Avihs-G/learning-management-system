@@ -1672,147 +1672,98 @@ function viewBorrowedBooks(bookId) {
         });
 }
 
-function returnBookByAdmin(bookId, borrowerId) {
+function returnBookByAdmin(bookId, borrowerIdentifier) {
+    console.log('Returning book:', { bookId, borrowerIdentifier });
+
     // Fetch book details
     firebase.firestore().collection('books').doc(bookId).get()
         .then((doc) => {
-            if (doc.exists) {
-                const book = doc.data();
-                
-                // Create a copy of borrowed history
-                const updatedBorrowedHistory = book.borrowedHistory.map(entry => {
-                    // Find the entry for the specific borrower
-                    if (entry.borrowerId === borrowerId && !entry.returnDate) {
-                        return {
-                            ...entry,
-                            returnDate: firebase.firestore.Timestamp.now()
-                        };
+            if (!doc.exists) {
+                throw new Error('Book not found');
+            }
+
+            const book = doc.data();
+            
+            // Create a copy of borrowed history
+            const updatedBorrowedHistory = book.borrowedHistory.map(entry => {
+                // Check if entry matches borrower and hasn't been returned
+                const matchesBorrower = typeof borrowerIdentifier === 'string' 
+                    ? entry.borrowerId === borrowerIdentifier 
+                    : true;
+
+                if (matchesBorrower && !entry.returnDate) {
+                    return {
+                        ...entry,
+                        returnDate: firebase.firestore.Timestamp.now(),
+                        status: 'returned'
+                    };
+                }
+                return entry;
+            });
+
+            // Calculate total and available copies
+            const totalCopies = book.totalCopies || 0;
+            const activeBorrowedCopies = updatedBorrowedHistory.filter(entry => !entry.returnDate).length;
+            const availableCopies = totalCopies - activeBorrowedCopies;
+
+            // Prepare update data
+            const updateData = {
+                borrowedHistory: updatedBorrowedHistory,
+                availableCopies: availableCopies,
+                status: availableCopies > 0 ? 'Available' : 'Fully Borrowed'
+            };
+
+            // Update book document
+            return firebase.firestore().collection('books').doc(bookId).update(updateData)
+                .then(() => {
+                    // Update borrowing records
+                    return firebase.firestore().collection('borrowings')
+                        .where('bookId', '==', bookId)
+                        .where('returnDate', '==', null)
+                        .get();
+                })
+                .then((querySnapshot) => {
+                    const batch = firebase.firestore().batch();
+                    
+                    querySnapshot.forEach((doc) => {
+                        const borrowingRef = doc.ref;
+                        batch.update(borrowingRef, {
+                            returnDate: firebase.firestore.Timestamp.now(),
+                            status: 'Returned'
+                        });
+                    });
+
+                    return batch.commit();
+                });
+        })
+        .then(() => {
+            console.log('Book return process completed successfully');
+            
+            // Show success message
+            alert('Book returned successfully!');
+            
+            // Refresh borrowed books modal
+            try {
+                const modalElement = document.getElementById('borrowedBooksModal');
+                if (modalElement) {
+                    const modal = bootstrap.Modal.getInstance(modalElement);
+                    if (modal) {
+                        modal.hide();
                     }
-                    return entry;
-                });
-
-                // Calculate total and available copies
-                const totalCopies = book.totalCopies || 0;
-                const activeBorrowedCopies = updatedBorrowedHistory.filter(entry => !entry.returnDate).length;
-                const availableCopies = totalCopies - activeBorrowedCopies;
-
-                // Update book document
-                return firebase.firestore().collection('books').doc(bookId).update({
-                    borrowedHistory: updatedBorrowedHistory,
-                    availableCopies: availableCopies,
-                    status: availableCopies > 0 ? 'Available' : 'Fully Borrowed'
-                });
-            } else {
-                throw new Error('Book not found');
+                }
+                
+                // Reload borrowed books and book list
+                viewBorrowedBooks(bookId);
+                loadBookList(localStorage.getItem('userRole'));
+            } catch (refreshError) {
+                console.error('Error during refresh:', refreshError);
             }
         })
-        .then(() => {
-            // Update borrowing record
-            return firebase.firestore().collection('borrowings')
-                .where('bookId', '==', bookId)
-                .where('userId', '==', borrowerId)
-                .where('returnDate', '==', null)
-                .get();
-        })
-        .then((querySnapshot) => {
-            const batch = firebase.firestore().batch();
-            
-            querySnapshot.forEach((doc) => {
-                const borrowingRef = doc.ref;
-                batch.update(borrowingRef, {
-                    returnDate: firebase.firestore.Timestamp.now(),
-                    status: 'Returned'
-                });
-            });
-
-            return batch.commit();
-        })
-        .then(() => {
-            alert('Book returned successfully!');
-            
-            // Reload the borrowed books list
-            const modalElement = document.getElementById('borrowedBooksModal');
-            const modal = bootstrap.Modal.getInstance(modalElement);
-            
-            // Refresh the borrowed books modal
-            viewBorrowedBooks(bookId);
-            
-            // Reload book list
-            loadBookList(localStorage.getItem('userRole'));
-        })
         .catch((error) => {
-            console.error('Error returning book:', error);
-            alert('Failed to return book: ' + error.message);
-        });
-}
-
-function returnBookByAdmin(bookId, borrowedEntryIndex) {
-    // Fetch book details
-    firebase.firestore().collection('books').doc(bookId).get()
-        .then((doc) => {
-            if (doc.exists) {
-                const book = doc.data();
-                
-                // Create a copy of borrowed history
-                const updatedBorrowedHistory = [...book.borrowedHistory];
-                
-                // Update the specific entry with return date
-                const currentEntry = updatedBorrowedHistory[borrowedEntryIndex];
-                updatedBorrowedHistory[borrowedEntryIndex] = {
-                    ...currentEntry,
-                    returnDate: firebase.firestore.Timestamp.now()
-                };
-
-                // Calculate total and available copies
-                const totalCopies = book.totalCopies || 0;
-                const activeBorrowedCopies = updatedBorrowedHistory.filter(entry => !entry.returnDate).length;
-                const availableCopies = totalCopies - activeBorrowedCopies;
-
-                // Update book document
-                return firebase.firestore().collection('books').doc(bookId).update({
-                    borrowedHistory: updatedBorrowedHistory,
-                    availableCopies: availableCopies,
-                    status: availableCopies > 0 ? 'Available' : 'Fully Borrowed'
-                });
-            } else {
-                throw new Error('Book not found');
-            }
-        })
-        .then(() => {
-            // Update borrowing record
-            return firebase.firestore().collection('borrowings')
-                .where('bookId', '==', bookId)
-                .where('returnDate', '==', null)
-                .get();
-        })
-        .then((querySnapshot) => {
-            const batch = firebase.firestore().batch();
-            
-            querySnapshot.forEach((doc) => {
-                const borrowingRef = doc.ref;
-                batch.update(borrowingRef, {
-                    returnDate: firebase.firestore.Timestamp.now(),
-                    status: 'Returned'
-                });
+            console.error('Comprehensive Error in Book Return:', {
+                message: error.message,
+                stack: error.stack
             });
-
-            return batch.commit();
-        })
-        .then(() => {
-            alert('Book returned successfully!');
-            
-            // Reload the borrowed books list
-            const modalElement = document.getElementById('borrowedBooksModal');
-            const modal = bootstrap.Modal.getInstance(modalElement);
-            
-            // Refresh the borrowed books modal
-            viewBorrowedBooks(bookId);
-            
-            // Reload book list
-            loadBookList(localStorage.getItem('userRole'));
-        })
-        .catch((error) => {
-            console.error('Error returning book:', error);
             alert('Failed to return book: ' + error.message);
         });
 }
