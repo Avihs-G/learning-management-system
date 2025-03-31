@@ -1,0 +1,14 @@
+# Dependency directories
+node_modules/
+
+# Environment files
+.env
+*.env
+
+# Firebase configuration
+firebase-config.js
+
+# Logs
+logs
+*.log
+npm-debug.log*
