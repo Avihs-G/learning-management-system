@@ -132,36 +132,37 @@ function logout() {
 }
 
 // Authentication State Observer
+// In auth.js
 firebase.auth().onAuthStateChanged((user) => {
+    // Find elements safely
+    const authSection = document.getElementById('auth-section');
+    const dashboardSection = document.getElementById('dashboard');
+
+    // Safely update styles with null checks
+    if (authSection) {
+        authSection.style.display = user ? 'none' : 'block';
+    }
+
+    if (dashboardSection) {
+        dashboardSection.style.display = user ? 'block' : 'none';
+    }
+
     if (user) {
-        // User is signed in
-        document.getElementById('auth-section').style.display = 'none';
-        document.getElementById('dashboard').style.display = 'block';
-        
-        // Fetch user role from Firestore
+        // Existing user authentication logic
         firebase.firestore().collection('users').doc(user.uid).get()
             .then((doc) => {
                 if (doc.exists) {
                     const userData = doc.data();
                     
-                    // Update welcome message with email
-                    document.getElementById('user-welcome').textContent = `Welcome, ${user.email}`;
-                    
-                    // Load dashboard content based on role
-                    loadDashboardContent(userData.role);
-                } else {
-                    // Handle case where user doc doesn't exist
-                    console.error('User profile not found');
-                    logout();
+                    // Update welcome message safely
+                    const userWelcomeElement = document.getElementById('user-welcome');
+                    if (userWelcomeElement) {
+                        userWelcomeElement.textContent = userData.name || user.email;
+                    }
                 }
             })
             .catch((error) => {
                 console.error('Error fetching user data:', error);
-                logout();
             });
-    } else {
-        // User is signed out
-        document.getElementById('auth-section').style.display = 'block';
-        document.getElementById('dashboard').style.display = 'none';
     }
 });
