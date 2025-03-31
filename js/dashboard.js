@@ -1817,41 +1817,135 @@ function returnBookByAdmin(bookId, borrowedEntryIndex) {
         });
 }
 
-
 function viewReturnRequests() {
     const roleContent = document.getElementById('role-content');
-    const role = localStorage.getItem('userRole');
+    const currentUser = firebase.auth().currentUser;
+    const userRole = localStorage.getItem('userRole');
 
-    roleContent.innerHTML = `
-        <div class="container-fluid">
-            <h2 class="mb-4">Book Return Requests</h2>
-            
-            <div class="card">
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-striped" id="return-requests-table">
-                            <thead>
-                                <tr>
-                                    <th>Book Title</th>
-                                    <th>Borrower</th>
-                                    <th>Borrowed Date</th>
-                                    <th>Student Condition</th>
-                                    <th>Student Comments</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody id="return-requests-body">
-                                <!-- Return requests will be dynamically loaded here -->
-                            </tbody>
-                        </table>
-                    </div>
+    // Check user permissions
+    if (userRole !== 'admin' && userRole !== 'teacher') {
+        roleContent.innerHTML = `
+            <div class="container-fluid">
+                <div class="alert alert-danger">
+                    You do not have permission to view return requests.
                 </div>
             </div>
+        `;
+        return;
+    }
+
+    // Show loading state
+    roleContent.innerHTML = `
+        <div class="container-fluid text-center">
+            <div class="spinner-border" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p>Loading return requests...</p>
         </div>
     `;
 
-    // Fetch return requests
-    fetchReturnRequests();
+    // Fetch pending return requests
+    firebase.firestore().collection('return-requests')
+        .where('status', '==', 'pending')
+        .get()
+        .then((querySnapshot) => {
+            // Check if any requests exist
+            if (querySnapshot.empty) {
+                roleContent.innerHTML = `
+                    <div class="container-fluid">
+                        <div class="alert alert-info">
+                            No pending return requests.
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            // Create table to display requests
+            let tableHTML = `
+                <div class="container-fluid">
+                    <h2 class="mb-4">Return Requests</h2>
+                    <div class="card">
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Book Title</th>
+                                            <th>Borrower</th>
+                                            <th>Borrowed Date</th>
+                                            <th>Return Condition</th>
+                                            <th>Comments</th>
+                                            <th>Actions</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+            `;
+
+            // Populate table with requests
+            querySnapshot.forEach((doc) => {
+                const request = doc.data();
+                const requestId = doc.id;
+
+                tableHTML += `
+                    <tr>
+                        <td>${request.bookTitle || 'N/A'}</td>
+                        <td>${request.userEmail}</td>
+                        <td>${request.borrowedDate ? new Date(request.borrowedDate.toDate()).toLocaleDateString() : 'N/A'}</td>
+                        <td>
+                            <span class="badge ${getConditionBadgeClass(request.condition)}">
+                                ${request.condition || 'N/A'}
+                            </span>
+                        </td>
+                        <td>${request.comments || 'No comments'}</td>
+                        <td>
+                            <div class="btn-group" role="group">
+                                <button class="btn btn-sm btn-success" onclick="processReturnRequest('${requestId}', 'accept')">
+                                    <i class="fas fa-check"></i> Accept
+                                </button>
+                                <button class="btn btn-sm btn-warning" onclick="processReturnRequest('${requestId}', 'penalty')">
+                                    <i class="fas fa-dollar-sign"></i> Penalty
+                                </button>
+                                <button class="btn btn-sm btn-danger" onclick="processReturnRequest('${requestId}', 'reject')">
+                                    <i class="fas fa-times"></i> Reject
+                                </button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            });
+
+            tableHTML += `
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            roleContent.innerHTML = tableHTML;
+        })
+        .catch((error) => {
+            console.error('Error fetching return requests:', error);
+            roleContent.innerHTML = `
+                <div class="container-fluid">
+                    <div class="alert alert-danger">
+                        Failed to load return requests: ${error.message}
+                    </div>
+                </div>
+            `;
+        });
+}
+
+// Helper function to get badge class based on condition
+function getConditionBadgeClass(condition) {
+    switch(condition) {
+        case 'good': return 'bg-success';
+        case 'slight-damage': return 'bg-warning';
+        case 'significant-damage': return 'bg-danger';
+        default: return 'bg-secondary';
+    }
 }
 
 function fetchReturnRequests() {
@@ -2350,149 +2444,111 @@ function finalizeReturnRequest(requestId, action) {
 }
 
 function processReturnRequest(requestId, action) {
-    console.log('Processing Return Request:', {
-        requestId: requestId,
-        action: action
-    });
+    console.log('Processing return request:', { requestId, action });
 
-    let modalTitle = '';
-    let modalBody = '';
-    let confirmButtonClass = '';
-    let confirmButtonText = '';
-
-    switch(action) {
-        case 'accept':
-            modalTitle = 'Accept Return Request (No Penalty)';
-            modalBody = `
-                <div class="alert alert-success">
-                    <strong>Book Condition:</strong> Book returned in good condition
-                </div>
-                <div class="form-group">
-                    <label>Additional Comments</label>
-                    <textarea id="admin-comments" class="form-control" rows="3" placeholder="Optional comments for return"></textarea>
-                </div>
-            `;
-            confirmButtonClass = 'btn-success';
-            confirmButtonText = 'Confirm No Penalty Return';
-            break;
-
-        case 'penalty':
-            modalTitle = 'Accept Return with Penalty';
-            modalBody = `
-                <div class="alert alert-warning">
-                    <strong>Book Damage Assessment</strong>
-                </div>
-                <div class="form-group mb-3">
-                    <label>Damage Level</label>
-                    <select id="book-condition" class="form-control">
-                        <option value="minor-damage">Minor Damage</option>
-                        <option value="major-damage">Major Damage</option>
-                    </select>
-                </div>
-                <div class="form-group mb-3">
-                    <label>Penalty Amount</label>
-                    <select id="penalty-amount" class="form-control">
-                        <option value="50">Rs. 50 - Minor Damage</option>
-                        <option value="100">Rs. 100 - Moderate Damage</option>
-                        <option value="200">Rs. 200 - Significant Damage</option>
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label>Penalty Reason</label>
-                    <textarea id="penalty-comments" class="form-control" rows="3" placeholder="Provide details about the damage"></textarea>
-                </div>
-            `;
-            confirmButtonClass = 'btn-warning';
-            confirmButtonText = 'Confirm Penalty';
-            break;
-
-        case 'reject':
-            modalTitle = 'Reject Return Request';
-            modalBody = `
-                <div class="alert alert-danger">
-                    <strong>Return Request Rejection</strong>
-                </div>
-                <div class="form-group mb-3">
-                    <label>Rejection Reason</label>
-                    <textarea id="rejection-comments" class="form-control" rows="3" placeholder="Provide a detailed reason for rejecting the return"></textarea>
-                </div>
-                <div class="form-group">
-                    <label>Book Condition</label>
-                    <select id="book-condition" class="form-control">
-                        <option value="damaged">Damaged</option>
-                        <option value="lost">Lost</option>
-                        <option value="unreturnable">Unreturnable</option>
-                    </select>
-                </div>
-            `;
-            confirmButtonClass = 'btn-danger';
-            confirmButtonText = 'Reject Request';
-            break;
-
-        default:
-            console.error('Invalid action:', action);
-            return;
+    // Validate action
+    const validActions = ['accept', 'penalty', 'reject'];
+    if (!validActions.includes(action)) {
+        console.error('Invalid action:', action);
+        alert('Invalid action selected');
+        return;
     }
 
-    // Create modal HTML
-    const modalHTML = `
-        <div class="modal fade" id="returnRequestModal" tabindex="-1">
-            <div class="modal-dialog">
-                <div class="modal-content">
-                    <div class="modal-header bg-${confirmButtonClass.replace('btn-', '')}">
-                        <h5 class="modal-title text-white">${modalTitle}</h5>
-                        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                    </div>
-                    <div class="modal-body">
-                        ${modalBody}
-                    </div>
-                    <div class="modal-footer">
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                        <button type="button" class="btn ${confirmButtonClass}" onclick="finalizeReturnRequest('${requestId}', '${action}')">
-                            ${confirmButtonText}
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    `;
+    // Confirm action
+    const actionText = {
+        'accept': 'accept',
+        'penalty': 'accept with penalty',
+        'reject': 'reject'
+    }[action];
 
-    // Remove any existing modals
-    const existingModal = document.getElementById('returnRequestModal');
-    if (existingModal) {
-        existingModal.remove();
+    if (!confirm(`Are you sure you want to ${actionText} this return request?`)) {
+        return;
     }
 
-    // Create and show modal
-    const modalContainer = document.createElement('div');
-    modalContainer.innerHTML = modalHTML;
-    document.body.appendChild(modalContainer);
-
-    const modalElement = document.getElementById('returnRequestModal');
-    const modal = new bootstrap.Modal(modalElement);
-    
-    // Add event listener to log any errors
-    modalElement.addEventListener('show.bs.modal', () => {
-        console.log('Modal is about to be shown');
-    });
-
-    modalElement.addEventListener('shown.bs.modal', () => {
-        console.log('Modal has been shown');
-    });
-
-    modalElement.addEventListener('hide.bs.modal', () => {
-        console.log('Modal is about to be hidden');
-    });
-
-    modalElement.addEventListener('hidden.bs.modal', () => {
-        console.log('Modal has been hidden');
-    });
-
-    try {
-        modal.show();
-    } catch (error) {
-        console.error('Error showing modal:', error);
+    // Get current user
+    const currentUser = firebase.auth().currentUser;
+    if (!currentUser) {
+        alert('Authentication required');
+        return;
     }
+
+    // Batch write to update multiple documents
+    const batch = firebase.firestore().batch();
+
+    // Fetch the return request first
+    firebase.firestore().collection('return-requests').doc(requestId).get()
+        .then((requestDoc) => {
+            if (!requestDoc.exists) {
+                throw new Error('Return request not found');
+            }
+
+            const requestData = requestDoc.data();
+            console.log('Request data:', requestData);
+
+            // Fetch the book details
+            return firebase.firestore().collection('books').doc(requestData.bookId).get()
+                .then((bookDoc) => {
+                    if (!bookDoc.exists) {
+                        throw new Error('Book not found');
+                    }
+
+                    const bookData = bookDoc.data();
+                    console.log('Book data:', bookData);
+
+                    // Prepare updated borrowed history
+                    const updatedBorrowedHistory = bookData.borrowedHistory.map(entry => {
+                        if (entry.borrowerId === requestData.userId && !entry.returnDate) {
+                            return {
+                                ...entry,
+                                returnDate: firebase.firestore.Timestamp.now(),
+                                status: action === 'accept' ? 'returned' : 
+                                        action === 'penalty' ? 'returned-with-penalty' : 
+                                        'return-rejected'
+                            };
+                        }
+                        return entry;
+                    });
+
+                    // Calculate available copies
+                    const totalCopies = bookData.totalCopies || 0;
+                    const activeBorrowedCopies = updatedBorrowedHistory.filter(entry => !entry.returnDate).length;
+                    const availableCopies = totalCopies - activeBorrowedCopies;
+
+                    // Prepare book update
+                    const bookUpdateData = {
+                        borrowedHistory: updatedBorrowedHistory,
+                        availableCopies: availableCopies,
+                        status: availableCopies > 0 ? 'Available' : 'Fully Borrowed'
+                    };
+
+                    // Update book document in batch
+                    const bookRef = firebase.firestore().collection('books').doc(requestData.bookId);
+                    batch.update(bookRef, bookUpdateData);
+
+                    // Update return request in batch
+                    const requestRef = firebase.firestore().collection('return-requests').doc(requestId);
+                    batch.update(requestRef, {
+                        status: action === 'reject' ? 'rejected' : 'completed',
+                        adminAction: action,
+                        processedBy: currentUser.uid,
+                        processedDate: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+
+                    // Commit batch write
+                    return batch.commit();
+                });
+        })
+        .then(() => {
+            console.log('Return request processed successfully');
+            alert('Return request processed successfully');
+            
+            // Refresh return requests view
+            viewReturnRequests();
+        })
+        .catch((error) => {
+            console.error('Error processing return request:', error);
+            alert(`Failed to process return request: ${error.message}`);
+        });
 }
 
 function finalizeReturnRequest(requestId, action) {
