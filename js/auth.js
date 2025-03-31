@@ -136,67 +136,53 @@ function logout() {
 
 // Authentication State Observer
 firebase.auth().onAuthStateChanged((user) => {
-    console.group('Authentication State Change');
-    console.log('User:', user ? user.email : 'Not logged in');
+    console.log('Authentication State Change:', user ? user.email : 'Not logged in');
 
-    // Find elements with detailed logging
-    const authSection = document.getElementById('auth-section');
-    const dashboardSection = document.getElementById('dashboard');
-
-    console.log('DOM Elements:', {
-        authSection: !!authSection,
-        dashboardSection: !!dashboardSection
-    });
-
-    // Null-safe style updates with logging
+    // Safely handle DOM elements
     try {
+        // Check if elements exist before accessing
+        const authSection = document.getElementById('auth-section');
+        const dashboardSection = document.getElementById('dashboard');
+        const userWelcomeElement = document.getElementById('user-welcome');
+
+        // Detailed logging of element existence
+        console.log('DOM Elements:', {
+            authSection: !!authSection,
+            dashboardSection: !!dashboardSection,
+            userWelcomeElement: !!userWelcomeElement
+        });
+
+        // Update styles with null checks
         if (authSection) {
-            authSection.style.display = user ? 'none' : 'block';
-            console.log('Auth Section Display:', authSection.style.display);
-        } else {
-            console.warn('Auth section element not found');
+            authSection.style.display = user ? 'none' : 'flex';
         }
 
         if (dashboardSection) {
-            dashboardSection.style.display = user ? 'block' : 'none';
-            console.log('Dashboard Section Display:', dashboardSection.style.display);
-        } else {
-            console.warn('Dashboard section element not found');
+            dashboardSection.style.display = user ? 'flex' : 'none';
         }
-    } catch (styleError) {
-        console.error('Error updating element styles:', styleError);
-    }
 
-    if (user) {
-        // Fetch user details with error handling
-        firebase.firestore().collection('users').doc(user.uid).get()
-            .then((doc) => {
-                if (doc.exists) {
-                    const userData = doc.data();
-                    console.log('User Data:', userData);
-                    
-                    // Update welcome message safely
-                    const userWelcomeElement = document.getElementById('user-welcome');
-                    if (userWelcomeElement) {
-                        userWelcomeElement.textContent = userData.name || user.email;
-                        console.log('Welcome message updated');
-                    } else {
-                        console.warn('User welcome element not found');
+        // Handle user data
+        if (user) {
+            firebase.firestore().collection('users').doc(user.uid).get()
+                .then((doc) => {
+                    if (doc.exists) {
+                        const userData = doc.data();
+                        
+                        // Update welcome message
+                        if (userWelcomeElement) {
+                            userWelcomeElement.textContent = userData.name || user.email;
+                        }
                     }
-                } else {
-                    console.warn('User document not found');
-                }
-            })
-            .catch((error) => {
-                console.error('Error fetching user data:', {
-                    message: error.message,
-                    code: error.code
+                })
+                .catch((error) => {
+                    console.error('Error fetching user data:', error);
                 });
-            })
-            .finally(() => {
-                console.groupEnd();
-            });
-    } else {
-        console.groupEnd();
+        }
+    } catch (error) {
+        console.error('Error in authentication state observer:', {
+            message: error.message,
+            name: error.name,
+            stack: error.stack
+        });
     }
 });
