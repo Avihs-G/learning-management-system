@@ -1,188 +1,138 @@
-function login() {
+// Initialize Supabase
+const SUPABASE_URL = "https://xrnqvtsjmtbxgkdvykrn.supabase.co"; // Replace with your Supabase URL
+const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhybnF2dHNqbXRieGdrZHZ5a3JuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM0MDM4NzIsImV4cCI6MjA1ODk3OTg3Mn0.TX-krSoOERfe1AiWAVj5hldgvVRZMLzMBcS4yxJuk1w"; // Replace with your Supabase Anon Key
+
+const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+// Function to sign up new users
+async function signup() {
     const email = document.getElementById('email').value;
     const password = document.getElementById('password').value;
 
-    firebase.auth().signInWithEmailAndPassword(email, password)
-        .then((userCredential) => {
-            const user = userCredential.user;
-            
-            // Check if user profile exists in Firestore
-            return firebase.firestore().collection('users').doc(user.uid).get()
-                .then((doc) => {
-                    if (!doc.exists) {
-                        // Determine default role based on email
-                        const role = determineUserRole(email);
-                        
-                        // Create user profile if it doesn't exist
-                        return firebase.firestore().collection('users').doc(user.uid).set({
-                            email: email,
-                            role: role,
-                            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                            lastLogin: firebase.firestore.FieldValue.serverTimestamp()
-                        });
-                    } else {
-                        // Update last login timestamp
-                        return firebase.firestore().collection('users').doc(user.uid).update({
-                            lastLogin: firebase.firestore.FieldValue.serverTimestamp()
-                        });
-                    }
-                })
-                .then(() => {
-                    // Fetch user role after ensuring profile exists
-                    return firebase.firestore().collection('users').doc(user.uid).get();
-                });
-        })
-        .then((doc) => {
-            const userData = doc.data();
-            
-            // Store role in local storage
-            localStorage.setItem('userRole', userData.role);
-            
-            // Update welcome message
-            document.getElementById('user-welcome').textContent = `Welcome, ${email}`;
-            
-            // Load dashboard content based on role
-            loadDashboardContent(userData.role);
-        })
-        .catch((error) => {
-            console.error('Login Error:', error);
-            alert('Login failed: ' + error.message);
-        });
-}
-
-function signup() {
-    const email = document.getElementById('email').value;
-    const password = document.getElementById('password').value;
-
-    // Basic validation
     if (!email || !password) {
         alert('Please enter both email and password');
         return;
     }
 
-    // Prevent signup of admin accounts through this method
+    // Prevent unauthorized admin account creation
     if (email.toLowerCase().includes('admin')) {
-        alert('Admin accounts cannot be created through this method');
+        alert('Admin accounts cannot be created through this method.');
         return;
     }
 
-    // Create user with Firebase Authentication
-    firebase.auth().createUserWithEmailAndPassword(email, password)
-        .then((userCredential) => {
-            const user = userCredential.user;
+    const { data, error } = await supabase.auth.signUp({ email, password });
 
-            // Determine default role
-            const role = determineUserRole(email);
+    if (error) {
+        console.error('Signup Error:', error.message);
+        alert('Signup failed: ' + error.message);
+        return;
+    }
 
-            // Create user profile in Firestore
-            return firebase.firestore().collection('users').doc(user.uid).set({
-                email: email,
-                role: role,
-                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-                lastLogin: firebase.firestore.FieldValue.serverTimestamp()
-            });
-        })
-        .then(() => {
-            alert('Account created successfully');
-            // Optionally, automatically log in the user
-            login();
-        })
-        .catch((error) => {
-            console.error('Signup Error:', error);
-            alert('Signup failed: ' + error.message);
-        });
+    // Determine default role based on email
+    const role = determineUserRole(email);
+
+    // Store user role in Supabase database
+    const { error: dbError } = await supabase
+        .from('users')
+        .insert([{ id: data.user.id, email: email, role: role, created_at: new Date() }]);
+
+    if (dbError) {
+        console.error('Database Error:', dbError.message);
+        alert('Error storing user data.');
+        return;
+    }
+
+    alert('Account created successfully. Check your email for verification.');
+}
+
+// Function to log in users
+async function login() {
+    const email = document.getElementById('email').value;
+    const password = document.getElementById('password').value;
+
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+
+    if (error) {
+        console.error('Login Error:', error.message);
+        alert('Login failed: ' + error.message);
+        return;
+    }
+
+    // Fetch user role from Supabase
+    const { data: userData, error: roleError } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', data.user.id)
+        .single();
+
+    if (roleError) {
+        console.error('Role Fetch Error:', roleError.message);
+        return;
+    }
+
+    // Store role in localStorage
+    localStorage.setItem('userRole', userData.role);
+
+    alert('Login successful!');
+    window.location.href = 'dashboard.html'; // Redirect to dashboard
 }
 
 // Function to determine user role based on email
 function determineUserRole(email) {
-    // Predefined admin and teacher email domains
-    const adminDomains = ['admin@dlms.com', 'admin@library.com'];
-    const teacherDomains = ['teacher@dlms.com', 'instructor@library.com'];
+    const adminEmails = ['admin@avihs-g.github.io'];
+    const teacherEmails = ['teacher@avihs-g.github.io'];
 
-    // Convert email to lowercase for case-insensitive comparison
     const lowercaseEmail = email.toLowerCase();
 
-    // Check admin domains first
-    if (adminDomains.some(domain => lowercaseEmail.endsWith(domain))) {
+    if (adminEmails.includes(lowercaseEmail)) {
         return 'admin';
     }
-
-    // Check teacher domains
-    if (teacherDomains.some(domain => lowercaseEmail.endsWith(domain))) {
+    if (teacherEmails.includes(lowercaseEmail)) {
         return 'teacher';
     }
 
-    // Default to student
-    return 'student';
+    return 'student'; // Default role
 }
 
-function logout() {
-    firebase.auth().signOut()
-        .then(() => {
-            // Clear local storage
-            localStorage.removeItem('userRole');
-            
-            // Redirect to index page
-            window.location.href = 'index.html';
-        })
-        .catch((error) => {
-            console.error('Logout Error', error);
-            alert('Logout failed: ' + error.message);
-        });
-}
-
-// Authentication State Observer
-// In auth.js
-
-// Authentication State Observer
-firebase.auth().onAuthStateChanged((user) => {
-    console.log('Authentication State Change:', user ? user.email : 'Not logged in');
-
-    // Safely handle DOM elements
-    try {
-        // Check if elements exist before accessing
-        const authSection = document.getElementById('auth-section');
-        const dashboardSection = document.getElementById('dashboard');
-        const userWelcomeElement = document.getElementById('user-welcome');
-
-        // Detailed logging of element existence
-        console.log('DOM Elements:', {
-            authSection: !!authSection,
-            dashboardSection: !!dashboardSection,
-            userWelcomeElement: !!userWelcomeElement
-        });
-
-        // Update styles with null checks
-        if (authSection) {
-            authSection.style.display = user ? 'none' : 'flex';
-        }
-
-        if (dashboardSection) {
-            dashboardSection.style.display = user ? 'flex' : 'none';
-        }
-
-        // Handle user data
-        if (user) {
-            firebase.firestore().collection('users').doc(user.uid).get()
-                .then((doc) => {
-                    if (doc.exists) {
-                        const userData = doc.data();
-                        
-                        // Update welcome message
-                        if (userWelcomeElement) {
-                            userWelcomeElement.textContent = userData.name || user.email;
-                        }
-                    }
-                })
-                .catch((error) => {
-                    console.error('Error fetching user data:', error);
-                });
-        }
-    } catch (error) {
-        console.error('Error in authentication state observer:', {
-            message: error.message,
-            name: error.name,
-            stack: error.stack
-        });
+// Function to log out users
+async function logout() {
+    const { error } = await supabase.auth.signOut();
+    if (error) {
+        console.error('Logout Error:', error.message);
+        alert('Logout failed: ' + error.message);
+        return;
     }
-});
+
+    localStorage.removeItem('userRole');
+    window.location.href = 'index.html'; // Redirect to login page
+}
+
+// Function to check authentication state
+async function checkAuthState() {
+    const { data: { user }, error } = await supabase.auth.getUser();
+
+    if (error || !user) {
+        window.location.href = 'index.html'; // Redirect to login page if not authenticated
+        return;
+    }
+
+    // Fetch user role
+    const { data: userData, error: roleError } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+    if (roleError) {
+        console.error('Role Fetch Error:', roleError.message);
+        return;
+    }
+
+    document.getElementById('user-welcome').textContent = `Welcome, ${user.email}`;
+    loadDashboardContent(userData.role);
+}
+
+// Call checkAuthState on dashboard page
+if (window.location.pathname.includes('dashboard.html')) {
+    checkAuthState();
+}

@@ -124,30 +124,41 @@ function loadMainDashboard(role) {
 }
 
 // Load Dashboard Statistics
-function loadDashboardStatistics(role) {
+
+async function loadDashboardStatistics(role) {
     // Total Books
-    firebase.firestore().collection('books').get()
-        .then((bookSnapshot) => {
-            document.getElementById('total-books').textContent = bookSnapshot.size;
-        });
+    const { data: totalBooks, error: totalBooksError } = await supabase
+        .from('books')
+        .select('*');
+    if (totalBooksError) {
+        console.error('Error fetching total books:', totalBooksError.message);
+    } else {
+        document.getElementById('total-books').textContent = totalBooks.length;
+    }
 
     // Available Books
-    firebase.firestore().collection('books')
-        .where('status', '==', 'Available')
-        .get()
-        .then((availableSnapshot) => {
-            document.getElementById('available-books').textContent = availableSnapshot.size;
-        });
+    const { data: availableBooks, error: availableBooksError } = await supabase
+        .from('books')
+        .select('*')
+        .eq('status', 'Available');
+    if (availableBooksError) {
+        console.error('Error fetching available books:', availableBooksError.message);
+    } else {
+        document.getElementById('available-books').textContent = availableBooks.length;
+    }
 
     // Borrowed Books
-    firebase.firestore().collection('books')
-        .where('status', '==', 'Borrowed')
-        .get()
-        .then((borrowedSnapshot) => {
-            document.getElementById('borrowed-books').textContent = borrowedSnapshot.size;
-        });
+    const { data: borrowedBooks, error: borrowedBooksError } = await supabase
+        .from('books')
+        .select('*')
+        .eq('status', 'Borrowed');
+    if (borrowedBooksError) {
+        console.error('Error fetching borrowed books:', borrowedBooksError.message);
+    } else {
+        document.getElementById('borrowed-books').textContent = borrowedBooks.length;
+    }
 
-    // Additional role-specific statistics can be added here
+    // Additional role-specific statistics
     if (role === 'admin') {
         loadRecentActivities();
         loadSystemOverview();
@@ -155,50 +166,50 @@ function loadDashboardStatistics(role) {
 }
 
 // Additional helper functions for admin dashboard
-function loadRecentActivities() {
+
+async function loadRecentActivities() {
     const recentActivitiesList = document.getElementById('recent-activities');
-    
-    firebase.firestore().collection('activities')
-        .orderBy('timestamp', 'desc')
-        .limit(5)
-        .get()
-        .then((querySnapshot) => {
-            recentActivitiesList.innerHTML = '';
-            querySnapshot.forEach((doc) => {
-                const activity = doc.data();
-                const listItem = document.createElement('li');
-                listItem.className = 'list-group-item';
-                listItem.textContent = `${activity.description} - ${new Date(activity.timestamp.toDate()).toLocaleString()}`;
-                recentActivitiesList.appendChild(listItem);
-            });
-        })
-        .catch((error) => {
-            console.error('Error loading recent activities:', error);
-            recentActivitiesList.innerHTML = '<li class="list-group-item">Unable to load activities</li>';
+    const { data: activities, error } = await supabase
+        .from('activities')
+        .select('*')
+        .order('timestamp', { ascending: false })
+        .limit(5);
+
+    if (error) {
+        console.error('Error loading recent activities:', error.message);
+        recentActivitiesList.innerHTML = '<li class="list-group-item">Unable to load activities</li>';
+    } else {
+        recentActivitiesList.innerHTML = '';
+        activities.forEach((activity) => {
+            const listItem = document.createElement('li');
+            listItem.className = 'list-group-item';
+            listItem.textContent = `${activity.description} - ${new Date(activity.timestamp).toLocaleString()}`;
+            recentActivitiesList.appendChild(listItem);
         });
+    }
 }
 
-function loadSystemOverview() {
+async function loadSystemOverview() {
     const systemOverview = document.getElementById('system-overview');
-    
-    Promise.all([
-        firebase.firestore().collection('books').where('status', '==', 'Available').get(),
-        firebase.firestore().collection('books').where('status', '==', 'Borrowed').get(),
-        firebase.firestore().collection('users').where('role', '==', 'student').get(),
-        firebase.firestore().collection('users').where('role', '==', 'teacher').get()
-    ])
-    .then(([availableBooks, borrowedBooks, students, teachers]) => {
+
+    try {
+        const [{ data: availableBooks }, { data: borrowedBooks }, { data: students }, { data: teachers }] = await Promise.all([
+            supabase.from('books').select('*').eq('status', 'Available'),
+            supabase.from('books').select('*').eq('status', 'Borrowed'),
+            supabase.from('users').select('*').eq('role', 'student'),
+            supabase.from('users').select('*').eq('role', 'teacher')
+        ]);
+
         systemOverview.innerHTML = `
-            <p><strong>Available Books:</strong> ${availableBooks.size}</p>
-            <p><strong>Borrowed Books:</strong> ${borrowedBooks.size}</p>
-            <p><strong>Total Students:</strong> ${students.size}</p>
-            <p><strong>Total Teachers:</strong> ${teachers.size}</p>
+            <p><strong>Available Books:</strong> ${availableBooks.length}</p>
+            <p><strong>Borrowed Books:</strong> ${borrowedBooks.length}</p>
+            <p><strong>Total Students:</strong> ${students.length}</p>
+            <p><strong>Total Teachers:</strong> ${teachers.length}</p>
         `;
-    })
-    .catch((error) => {
-        console.error('Error loading system overview:', error);
+    } catch (error) {
+        console.error('Error loading system overview:', error.message);
         systemOverview.innerHTML = 'Unable to load system overview';
-    });
+    }
 }
 
 // Book Section Management
@@ -251,125 +262,111 @@ function loadBookSection(role) {
 }
 
 // Load Book List
-function loadBookList(role) {
+
+async function loadBookList(role) {
     const bookListContainer = document.getElementById('book-list-container');
     bookListContainer.innerHTML = 'Loading books...';
 
-    // Get current user
-    const currentUser = firebase.auth().currentUser;
+    const { data: books, error } = await supabase.from('books').select('*');
 
-    firebase.firestore().collection('books').get()
-        .then((querySnapshot) => {
-            let tableHTML = `
-                <table class="table table-striped">
-                    <thead>
-                        <tr>
-                            <th>Title</th>
-                            <th>Author</th>
-                            <th>Category</th>
-                            <th>ISBN</th>
-                            <th>Total Copies</th>
-                            <th>Available Copies</th>
-                            <th>Status</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
+    if (error) {
+        console.error('Error loading books:', error.message);
+        bookListContainer.innerHTML = 'Failed to load books';
+        return;
+    }
 
-            querySnapshot.forEach((doc) => {
-                const book = doc.data();
-                const bookId = doc.id;
-                
-                // Calculate book statistics
-                const totalCopies = book.totalCopies || 0;
-                const borrowedHistory = book.borrowedHistory || [];
-                
-                // Count active borrowed copies (without return date)
-                const activeBorrowedCopies = borrowedHistory.filter(entry => !entry.returnDate).length;
-                const availableCopies = totalCopies - activeBorrowedCopies;
+    let tableHTML = `
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>Author</th>
+                    <th>Category</th>
+                    <th>ISBN</th>
+                    <th>Total Copies</th>
+                    <th>Available Copies</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
 
-                // Check if current user has borrowed this book
-                let isCurrentUserBorrowed = false;
-                if (currentUser && borrowedHistory) {
-                    isCurrentUserBorrowed = borrowedHistory.some(
-                        entry => entry.borrowerId === currentUser.uid && !entry.returnDate
-                    );
-                }
+    books.forEach((book) => {
+        const bookId = book.id;
+        const totalCopies = book.totalCopies || 0;
+        const borrowedHistory = book.borrowedHistory || [];
+        const activeBorrowedCopies = borrowedHistory.filter(entry => !entry.returnDate).length;
+        const availableCopies = totalCopies - activeBorrowedCopies;
 
-                // Determine action buttons based on role
-                let actionButtons = '';
-                if (role === 'student' && currentUser) {
-                    if (isCurrentUserBorrowed) {
-                        // Student has borrowed this book
-                        actionButtons = `
-                            <button class="btn btn-sm btn-warning" onclick="returnBook('${bookId}')">
-                                <i class="fas fa-undo"></i> Return Book
-                            </button>
-                        `;
-                    } else if (availableCopies > 0) {
-                        // Book is available for borrowing
-                        actionButtons = `
-                            <button class="btn btn-sm btn-success" onclick="borrowBook('${bookId}')">
-                                <i class="fas fa-book"></i> Borrow
-                            </button>
-                        `;
-                    }
-                } else if (role === 'admin' || role === 'teacher') {
-                    actionButtons = `
-                        <div class="btn-group" role="group">
-                            <button class="btn btn-sm btn-warning" onclick="editBook('${bookId}')">
-                                <i class="fas fa-edit"></i> Edit
-                            </button>
-                            <button class="btn btn-sm btn-danger" onclick="deleteBook('${bookId}')">
-                                <i class="fas fa-trash"></i> Delete
-                            </button>
-                            <button class="btn btn-sm btn-info" onclick="assignBook('${bookId}')">
-                                <i class="fas fa-user-plus"></i> Assign Book
-                            </button>
-                            <button class="btn btn-sm btn-success" onclick="viewBorrowedBooks('${bookId}')">
-                                <i class="fas fa-book-reader"></i> Borrowed Books
-                            </button>
-                        </div>
-                    `;
-                }
+        let actionButtons = '';
+        if (role === 'student') {
+            const isCurrentUserBorrowed = borrowedHistory.some(
+                entry => entry.borrowerId === supabase.auth.user().id && !entry.returnDate
+            );
 
-                tableHTML += `
-                    <tr>
-                        <td>${book.title}</td>
-                        <td>${book.author}</td>
-                        <td>${book.category || 'N/A'}</td>
-                        <td>${book.isbn}</td>
-                        <td>${totalCopies}</td>
-                        <td>${availableCopies}</td>
-                        <td>${availableCopies > 0 ? 'Available' : 'Fully Borrowed'}</td>
-                        <td>
-                            <div class="btn-group" role="group">
-                                <button class="btn btn-sm btn-info" onclick="viewBookDetails('${bookId}')">
-                                    <i class="fas fa-eye"></i> View
-                                </button>
-                                ${actionButtons}
-                            </div>
-                        </td>
-                    </tr>
+            if (isCurrentUserBorrowed) {
+                actionButtons = `
+                    <button class="btn btn-sm btn-warning" onclick="returnBook('${bookId}')">
+                        <i class="fas fa-undo"></i> Return Book
+                    </button>
                 `;
-            });
-
-            tableHTML += `
-                    </tbody>
-                </table>
+            } else if (availableCopies > 0) {
+                actionButtons = `
+                    <button class="btn btn-sm btn-success" onclick="borrowBook('${bookId}')">
+                        <i class="fas fa-book"></i> Borrow
+                    </button>
+                `;
+            }
+        } else if (role === 'admin' || role === 'teacher') {
+            actionButtons = `
+                <div class="btn-group" role="group">
+                    <button class="btn btn-sm btn-warning" onclick="editBook('${bookId}')">
+                        <i class="fas fa-edit"></i> Edit
+                    </button>
+                    <button class="btn btn-sm btn-danger" onclick="deleteBook('${bookId}')">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                    <button class="btn btn-sm btn-info" onclick="assignBook('${bookId}')">
+                        <i class="fas fa-user-plus"></i> Assign Book
+                    </button>
+                    <button class="btn btn-sm btn-success" onclick="viewBorrowedBooks('${bookId}')">
+                        <i class="fas fa-book-reader"></i> Borrowed Books
+                    </button>
+                </div>
             `;
+        }
 
-            bookListContainer.innerHTML = tableHTML;
-        })
-        .catch((error) => {
-            console.error('Error loading books:', error);
-            bookListContainer.innerHTML = 'Failed to load books';
-        });
+        tableHTML += `
+            <tr>
+                <td>${book.title}</td>
+                <td>${book.author}</td>
+                <td>${book.category || 'N/A'}</td>
+                <td>${book.isbn}</td>
+                <td>${totalCopies}</td>
+                <td>${availableCopies}</td>
+                <td>${availableCopies > 0 ? 'Available' : 'Fully Borrowed'}</td>
+                <td>
+                    <div class="btn-group" role="group">
+                        <button class="btn btn-sm btn-info" onclick="viewBookDetails('${bookId}')">
+                            <i class="fas fa-eye"></i> View
+                        </button>
+                        ${actionButtons}
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+
+    tableHTML += `
+            </tbody>
+        </table>
+    `;
+
+    bookListContainer.innerHTML = tableHTML;
 }
 
-function assignBook(bookId) {
-    // Open a modal to assign book to a student
+async function assignBook(bookId) {
     const modalHTML = `
         <div class="modal fade" id="assignBookModal" tabindex="-1">
             <div class="modal-dialog">
@@ -403,18 +400,40 @@ function assignBook(bookId) {
         </div>
     `;
 
-    // Create modal
     const modalContainer = document.createElement('div');
     modalContainer.innerHTML = modalHTML;
     document.body.appendChild(modalContainer);
 
-    // Load students
-    loadStudentsForAssignment();
+    await loadStudentsForAssignment();
 
-    // Show modal
     const modalElement = document.getElementById('assignBookModal');
     const modal = new bootstrap.Modal(modalElement);
     modal.show();
+}
+
+async function loadStudentsForAssignment() {
+    const studentSelect = document.getElementById('student-select');
+    const { data: students, error } = await supabase.from('users').select('*').eq('role', 'student');
+
+    if (error) {
+        console.error('Error loading students:', error.message);
+        studentSelect.innerHTML = '<option>Failed to load students</option>';
+        return;
+    }
+
+    studentSelect.innerHTML = '<option value="">Select a student</option>';
+
+    if (students.length === 0) {
+        studentSelect.innerHTML = '<option>No students found</option>';
+        return;
+    }
+
+    students.forEach((student) => {
+        const option = document.createElement('option');
+        option.value = student.id;
+        option.textContent = `${student.name || 'Unknown'} (${student.email})`;
+        studentSelect.appendChild(option);
+    });
 }
 
 function loadStudentsForAssignment() {
@@ -446,13 +465,13 @@ function loadStudentsForAssignment() {
             studentSelect.innerHTML = '<option>Failed to load students</option>';
         });
 }
-function confirmBookAssignment(bookId) {
+
+async function confirmBookAssignment(bookId) {
     const studentSelect = document.getElementById('student-select');
     const studentId = studentSelect.value;
     const assignDate = document.getElementById('assign-date').value;
     const dueDate = document.getElementById('due-date').value;
 
-    // Enhanced validation
     if (!studentId) {
         alert('Please select a student');
         studentSelect.focus();
@@ -469,182 +488,193 @@ function confirmBookAssignment(bookId) {
         return;
     }
 
-    // Declare student variable in outer scope
-    let student, book;
+    try {
+        const { data: student, error: studentError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('id', studentId)
+            .single();
 
-    // Fetch student and book details
-    firebase.firestore().collection('users').doc(studentId).get()
-    .then((studentDoc) => {
-        if (!studentDoc.exists) {
+        if (studentError || !student) {
             throw new Error('Student not found');
         }
-        student = studentDoc.data();
 
-        // Fetch book details
-        return firebase.firestore().collection('books').doc(bookId).get();
-    })
-    .then((bookDoc) => {
-        if (!bookDoc.exists) {
+        const { data: book, error: bookError } = await supabase
+            .from('books')
+            .select('*')
+            .eq('id', bookId)
+            .single();
+
+        if (bookError || !book) {
             throw new Error('Book not found');
         }
-        book = bookDoc.data();
 
-        // Calculate available copies
         const totalCopies = book.totalCopies || 0;
-        const borrowedCopies = book.borrowedHistory 
-            ? book.borrowedHistory.filter(entry => !entry.returnDate).length 
+        const borrowedCopies = book.borrowedHistory
+            ? book.borrowedHistory.filter(entry => !entry.returnDate).length
             : 0;
         const availableCopies = totalCopies - borrowedCopies;
 
-        // Check book availability
         if (availableCopies <= 0) {
             throw new Error('No copies of this book are available');
         }
 
-        // Update book document
-        return firebase.firestore().collection('books').doc(bookId).update({
-            borrowedHistory: firebase.firestore.FieldValue.arrayUnion({
-                borrowerId: studentId,
-                borrowerEmail: student.email,
-                borrowedDate: firebase.firestore.Timestamp.fromDate(new Date(assignDate)),
-                dueDate: firebase.firestore.Timestamp.fromDate(new Date(dueDate)),
-                returnDate: null
+        const { error: updateError } = await supabase
+            .from('books')
+            .update({
+                borrowedHistory: [
+                    ...book.borrowedHistory,
+                    {
+                        borrowerId: studentId,
+                        borrowerEmail: student.email,
+                        borrowedDate: new Date(assignDate),
+                        dueDate: new Date(dueDate),
+                        returnDate: null
+                    }
+                ]
             })
-        });
-    })
-    .then(() => {
-        // Create a borrowing record
-        return firebase.firestore().collection('borrowings').add({
-            bookId: bookId,
-            userId: studentId,
-            userEmail: student.email,
-            borrowedDate: firebase.firestore.FieldValue.serverTimestamp(),
-            dueDate: firebase.firestore.Timestamp.fromDate(new Date(dueDate)),
-            returnDate: null,
-            status: 'Borrowed'
-        });
-    })
-    .then(() => {
+            .eq('id', bookId);
+
+        if (updateError) {
+            throw new Error('Failed to update book');
+        }
+
+        const { error: borrowError } = await supabase
+            .from('borrowings')
+            .insert({
+                bookId: bookId,
+                userId: studentId,
+                userEmail: student.email,
+                borrowedDate: new Date(assignDate),
+                dueDate: new Date(dueDate),
+                returnDate: null,
+                status: 'Borrowed'
+            });
+
+        if (borrowError) {
+            throw new Error('Failed to create borrowing record');
+        }
+
         alert('Book assigned successfully!');
-        // Close the modal
         const modalElement = document.getElementById('assignBookModal');
         const modalInstance = bootstrap.Modal.getInstance(modalElement);
         modalInstance.hide();
-        
-        // Reload book list
+
         loadBookList(localStorage.getItem('userRole'));
-    })
-    .catch((error) => {
-        console.error('Error assigning book:', error);
+    } catch (error) {
+        console.error('Error assigning book:', error.message);
         alert('Failed to assign book: ' + error.message);
-    });
+    }
 }
 
 // New function to view book details
-function viewBookDetails(bookId) {
-    firebase.firestore().collection('books').doc(bookId).get()
-        .then((doc) => {
-            if (doc.exists) {
-                const book = doc.data();
-                const modalHTML = `
-                    <div class="modal fade" id="bookDetailsModal" tabindex="-1">
-                        <div class="modal-dialog modal-lg">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h5 class="modal-title">Book Details</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+
+async function viewBookDetails(bookId) {
+    try {
+        const { data: book, error } = await supabase
+            .from('books')
+            .select('*')
+            .eq('id', bookId)
+            .single();
+
+        if (error || !book) {
+            throw new Error('Failed to fetch book details');
+        }
+
+        const modalHTML = `
+            <div class="modal fade" id="bookDetailsModal" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Book Details</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <h4>${book.title}</h4>
+                                    <p><strong>Author:</strong> ${book.author}</p>
+                                    <p><strong>ISBN:</strong> ${book.isbn}</p>
+                                    <p><strong>Category:</strong> ${book.category || 'N/A'}</p>
                                 </div>
-                                <div class="modal-body">
-                                    <div class="row">
-                                        <div class="col-md-6">
-                                            <h4>${book.title}</h4>
-                                            <p><strong>Author:</strong> ${book.author}</p>
-                                            <p><strong>ISBN:</strong> ${book.isbn}</p>
-                                            <p><strong>Category:</strong> ${book.category || 'N/A'}</p>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <p><strong>Publication Year:</strong> ${book.publicationYear || 'N/A'}</p>
-                                            <p><strong>Total Copies:</strong> ${book.totalCopies}</p>
-                                            <p><strong>Available Copies:</strong> ${book.availableCopies}</p>
-                                            <p><strong>Status:</strong> ${book.status}</p>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="row mt-3">
-                                        <div class="col-md-6">
-                                            <p><strong>Shelf Location:</strong> ${book.shelfLocation || 'N/A'}</p>
-                                            <p><strong>Publisher:</strong> ${book.publisher || 'N/A'}</p>
-                                            <p><strong>Edition:</strong> ${book.edition || 'N/A'}</p>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <p><strong>Keywords:</strong> ${book.keywords ? book.keywords.join(', ') : 'N/A'}</p>
-                                        </div>
-                                    </div>
-                                    
-                                    ${book.description ? `
-                                    <div class="row mt-3">
-                                        <div class="col-12">
-                                            <h5>Description</h5>
-                                            <p>${book.description}</p>
-                                        </div>
-                                    </div>
-                                    ` : ''}
-                                    
-                                    <div class="row mt-3">
-                                        <div class="col-12">
-                                            <h5>Borrowing History</h5>
-                                            <table class="table">
-                                                <thead>
-                                                    <tr>
-                                                        <th>Borrower</th>
-                                                        <th>Borrowed Date</th>
-                                                        <th>Return Date</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    ${book.borrowedHistory && book.borrowedHistory.length > 0 ? 
-                                                        book.borrowedHistory.map(history => `
-                                                        <tr>
-                                                            <td>${history.borrowerEmail || 'N/A'}</td>
-                                                            <td>${history.borrowedDate ? new Date(history.borrowedDate.toDate()).toLocaleDateString() : 'N/A'}</td>
-                                                            <td>${history.returnDate ? new Date(history.returnDate.toDate()).toLocaleDateString() : 'Not Returned'}</td>
-                                                        </tr>
-                                                    `).join('') : 
-                                                    '<tr><td colspan="3">No borrowing history</td></tr>'}
-                                                </tbody>
-                                            </table>
-                                        </div>
-                                    </div>
+                                <div class="col-md-6">
+                                    <p><strong>Publication Year:</strong> ${book.publicationYear || 'N/A'}</p>
+                                    <p><strong>Total Copies:</strong> ${book.totalCopies}</p>
+                                    <p><strong>Available Copies:</strong> ${book.availableCopies}</p>
+                                    <p><strong>Status:</strong> ${book.status}</p>
                                 </div>
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            </div>
+                            
+                            <div class="row mt-3">
+                                <div class="col-md-6">
+                                    <p><strong>Shelf Location:</strong> ${book.shelfLocation || 'N/A'}</p>
+                                    <p><strong>Publisher:</strong> ${book.publisher || 'N/A'}</p>
+                                    <p><strong>Edition:</strong> ${book.edition || 'N/A'}</p>
+                                </div>
+                                <div class="col-md-6">
+                                    <p><strong>Keywords:</strong> ${book.keywords ? book.keywords.join(', ') : 'N/A'}</p>
+                                </div>
+                            </div>
+                            
+                            ${book.description ? `
+                            <div class="row mt-3">
+                                <div class="col-12">
+                                    <h5>Description</h5>
+                                    <p>${book.description}</p>
+                                </div>
+                            </div>
+                            ` : ''}
+                            
+                            <div class="row mt-3">
+                                <div class="col-12">
+                                    <h5>Borrowing History</h5>
+                                    <table class="table">
+                                        <thead>
+                                            <tr>
+                                                <th>Borrower</th>
+                                                <th>Borrowed Date</th>
+                                                <th>Return Date</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            ${book.borrowedHistory && book.borrowedHistory.length > 0 ? 
+                                                book.borrowedHistory.map(history => `
+                                                <tr>
+                                                    <td>${history.borrowerEmail || 'N/A'}</td>
+                                                    <td>${history.borrowedDate ? new Date(history.borrowedDate).toLocaleDateString() : 'N/A'}</td>
+                                                    <td>${history.returnDate ? new Date(history.returnDate).toLocaleDateString() : 'Not Returned'}</td>
+                                                </tr>
+                                            `).join('') : 
+                                            '<tr><td colspan="3">No borrowing history</td></tr>'}
+                                        </tbody>
+                                    </table>
                                 </div>
                             </div>
                         </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                        </div>
                     </div>
-                `;
-                
-                // Create modal
-                const modalContainer = document.createElement('div');
-                modalContainer.innerHTML = modalHTML;
-                document.body.appendChild(modalContainer);
-                
-                // Show modal using Bootstrap
-                const modalElement = document.getElementById('bookDetailsModal');
-                const modal = new bootstrap.Modal(modalElement);
-                modal.show();
-            }
-        })
-        .catch((error) => {
-            console.error('Error fetching book details:', error);
-            alert('Failed to fetch book details');
-        });
+                </div>
+            </div>
+        `;
+        
+        const modalContainer = document.createElement('div');
+        modalContainer.innerHTML = modalHTML;
+        document.body.appendChild(modalContainer);
+        
+        const modalElement = document.getElementById('bookDetailsModal');
+        const modal = new bootstrap.Modal(modalElement);
+        modal.show();
+    } catch (error) {
+        console.error('Error fetching book details:', error.message);
+        alert('Failed to fetch book details');
+    }
 }
 
 // Update addNewBook function to include description
 
-function addNewBook() {
-    // Collect all form values
+async function addNewBook() {
     const title = document.getElementById('book-title').value;
     const author = document.getElementById('book-author').value;
     const isbn = document.getElementById('book-isbn').value;
@@ -658,13 +688,11 @@ function addNewBook() {
     const edition = document.getElementById('book-edition').value;
     const keywords = document.getElementById('book-keywords').value;
 
-    // Validation
     if (!title || !author || !isbn || !category || !totalCopies) {
         alert('Please fill in all required fields');
         return;
     }
 
-    // Prepare book data object with all new fields
     const bookData = {
         title: title,
         author: author,
@@ -679,27 +707,29 @@ function addNewBook() {
         publisher: publisher || '',
         edition: edition || '',
         keywords: keywords ? keywords.split(',').map(k => k.trim()) : [],
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        borrowedHistory: [] // Track borrowing history
+        createdAt: new Date(),
+        borrowedHistory: []
     };
 
-    // Add book to Firestore
-    firebase.firestore().collection('books').add(bookData)
-    .then((docRef) => {
+    try {
+        const { error } = await supabase.from('books').insert(bookData);
+
+        if (error) {
+            throw new Error('Failed to add book');
+        }
+
         alert('Book added successfully');
-        // Close the modal
         const modalElement = document.getElementById('addBookModal');
         const modalInstance = bootstrap.Modal.getInstance(modalElement);
         modalInstance.hide();
-        
-        // Reload book list
+
         loadBookList(localStorage.getItem('userRole'));
-    })
-    .catch((error) => {
-        console.error('Error adding book:', error);
+    } catch (error) {
+        console.error('Error adding book:', error.message);
         alert('Failed to add book');
-    });
+    }
 }
+
 function openAddBookModal() {
     const modalHTML = `
         <div class="modal fade" id="addBookModal" tabindex="-1">
@@ -850,124 +880,127 @@ function addNewBook() {
 }
 
 // Edit Book
-function editBook(bookId) {
-    // Fetch book details
-    firebase.firestore().collection('books').doc(bookId).get()
-        .then((doc) => {
-            if (doc.exists) {
-                const book = doc.data();
-                const modalHTML = `
-                    <div class="modal fade" id="editBookModal" tabindex="-1">
-                        <div class="modal-dialog modal-lg">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h5 class="modal-title">Edit Book</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+
+async function editBook(bookId) {
+    try {
+        const { data: book, error } = await supabase
+            .from('books')
+            .select('*')
+            .eq('id', bookId)
+            .single();
+
+        if (error || !book) {
+            throw new Error('Failed to fetch book details');
+        }
+
+        const modalHTML = `
+            <div class="modal fade" id="editBookModal" tabindex="-1">
+                <div class="modal-dialog modal-lg">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Edit Book</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Book Title</label>
+                                    <input type="text" id="edit-book-title" class="form-control" value="${book.title}" required>
                                 </div>
-                                <div class="modal-body">
-                                    <div class="row">
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">Book Title</label>
-                                            <input type="text" id="edit-book-title" class="form-control" value="${book.title}" required>
-                                        </div>
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">Author</label>
-                                            <input type="text" id="edit-book-author" class="form-control" value="${book.author}" required>
-                                        </div>
-                                    </div>
-                                    <div class="row">
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">ISBN</label>
-                                            <input type="text" id="edit-book-isbn" class="form-control" value="${book.isbn}" required>
-                                        </div>
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">Category</label>
-                                            <select id="edit-book-category" class="form-control">
-                                                <option value="Fiction" ${book.category === 'Fiction' ? 'selected' : ''}>Fiction</option>
-                                                <option value="Non-Fiction" ${book.category === 'Non-Fiction' ? 'selected' : ''}>Non-Fiction</option>
-                                                <option value="Science" ${book.category === 'Science' ? 'selected' : ''}>Science</option>
-                                                <option value="Technology" ${book.category === 'Technology' ? 'selected' : ''}>Technology</option>
-                                                <option value="History" ${book.category === 'History' ? 'selected' : ''}>History</option>
-                                                <option value="Literature" ${book.category === 'Literature' ? 'selected' : ''}>Literature</option>
-                                                <option value="Biography" ${book.category === 'Biography' ? 'selected' : ''}>Biography</option>
-                                                <option value="Self-Help" ${book.category === 'Self-Help' ? 'selected' : ''}>Self-Help</option>
-                                            </select>
-                                        </div>
-                                    </div>
-                                    <div class="row">
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">Total Copies</label>
-                                            <input type="number" id="edit-book-total-copies" class="form-control" value="${book.totalCopies}" min="1" required>
-                                        </div>
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">Publication Year</label>
-                                            <input type="number" id="edit-book-publication-year" class="form-control" value="${book.publicationYear || ''}" min="1800" max="2023">
-                                        </div>
-                                    </div>
-                                    <div class="row">
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">Book Status</label>
-                                            <select id="edit-book-status" class="form-control">
-                                                <option value="Available" ${book.status === 'Available' ? 'selected' : ''}>Available</option>
-                                                <option value="Borrowed" ${book.status === 'Borrowed' ? 'selected' : ''}>Borrowed</option>
-                                                <option value="Damaged" ${book.status === 'Damaged' ? 'selected' : ''}>Damaged</option>
-                                                <option value="Lost" ${book.status === 'Lost' ? 'selected' : ''}>Lost</option>
-                                                <option value="Under Repair" ${book.status === 'Under Repair' ? 'selected' : ''}>Under Repair</option>
-                                            </select>
-                                        </div>
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">Shelf Location</label>
-                                            <input type="text" id="edit-book-shelf-location" class="form-control" value="${book.shelfLocation || ''}" placeholder="e.g., A1, B2">
-                                        </div>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Book Description</label>
-                                        <textarea id="edit-book-description" class="form-control" rows="3">${book.description || ''}</textarea>
-                                    </div>
-                                    <div class="row">
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">Publisher</label>
-                                            <input type="text" id="edit-book-publisher" class="form-control" value="${book.publisher || ''}">
-                                        </div>
-                                        <div class="col-md-6 mb-3">
-                                            <label class="form-label">Edition</label>
-                                            <input type="text" id="edit-book-edition" class="form-control" value="${book.edition || ''}" placeholder="e.g., 1st, 2nd">
-                                        </div>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Keywords</label>
-                                        <input type="text" id="edit-book-keywords" class="form-control" value="${book.keywords ? book.keywords.join(', ') : ''}" placeholder="Enter keywords separated by commas">
-                                    </div>
-                                </div>
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                                    <button type="button" class="btn btn-primary" onclick="updateBook('${bookId}')">Save Changes</button>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Author</label>
+                                    <input type="text" id="edit-book-author" class="form-control" value="${book.author}" required>
                                 </div>
                             </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">ISBN</label>
+                                    <input type="text" id="edit-book-isbn" class="form-control" value="${book.isbn}" required>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Category</label>
+                                    <select id="edit-book-category" class="form-control">
+                                        <option value="Fiction" ${book.category === 'Fiction' ? 'selected' : ''}>Fiction</option>
+                                        <option value="Non-Fiction" ${book.category === 'Non-Fiction' ? 'selected' : ''}>Non-Fiction</option>
+                                        <option value="Science" ${book.category === 'Science' ? 'selected' : ''}>Science</option>
+                                        <option value="Technology" ${book.category === 'Technology' ? 'selected' : ''}>Technology</option>
+                                        <option value="History" ${book.category === 'History' ? 'selected' : ''}>History</option>
+                                        <option value="Literature" ${book.category === 'Literature' ? 'selected' : ''}>Literature</option>
+                                        <option value="Biography" ${book.category === 'Biography' ? 'selected' : ''}>Biography</option>
+                                        <option value="Self-Help" ${book.category === 'Self-Help' ? 'selected' : ''}>Self-Help</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Total Copies</label>
+                                    <input type="number" id="edit-book-total-copies" class="form-control" value="${book.totalCopies}" min="1" required>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Publication Year</label>
+                                    <input type="number" id="edit-book-publication-year" class="form-control" value="${book.publicationYear || ''}" min="1800" max="2023">
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Book Status</label>
+                                    <select id="edit-book-status" class="form-control">
+                                        <option value="Available" ${book.status === 'Available' ? 'selected' : ''}>Available</option>
+                                        <option value="Borrowed" ${book.status === 'Borrowed' ? 'selected' : ''}>Borrowed</option>
+                                        <option value="Damaged" ${book.status === 'Damaged' ? 'selected' : ''}>Damaged</option>
+                                        <option value="Lost" ${book.status === 'Lost' ? 'selected' : ''}>Lost</option>
+                                        <option value="Under Repair" ${book.status === 'Under Repair' ? 'selected' : ''}>Under Repair</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Shelf Location</label>
+                                    <input type="text" id="edit-book-shelf-location" class="form-control" value="${book.shelfLocation || ''}" placeholder="e.g., A1, B2">
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Book Description</label>
+                                <textarea id="edit-book-description" class="form-control" rows="3">${book.description || ''}</textarea>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Publisher</label>
+                                    <input type="text" id="edit-book-publisher" class="form-control" value="${book.publisher || ''}">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Edition</label>
+                                    <input type="text" id="edit-book-edition" class="form-control" value="${book.edition || ''}" placeholder="e.g., 1st, 2nd">
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Keywords</label>
+                                <input type="text" id="edit-book-keywords" class="form-control" value="${book.keywords ? book.keywords.join(', ') : ''}" placeholder="Enter keywords separated by commas">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            <button type="button" class="btn btn-primary" onclick="updateBook('${bookId}')">Save Changes</button>
                         </div>
                     </div>
-                `;
-                
-                // Create modal
-                const modalContainer = document.createElement('div');
-                modalContainer.innerHTML = modalHTML;
-                document.body.appendChild(modalContainer);
-                
-                // Show modal using Bootstrap
-                const modalElement = document.getElementById('editBookModal');
-                const modal = new bootstrap.Modal(modalElement);
-                modal.show();
-            }
-        })
-        .catch((error) => {
-            console.error('Error fetching book details:', error);
-            alert('Failed to fetch book details');
-        });
+                </div>
+            </div>
+        `;
+        
+        const modalContainer = document.createElement('div');
+        modalContainer.innerHTML = modalHTML;
+        document.body.appendChild(modalContainer);
+        
+        const modalElement = document.getElementById('editBookModal');
+        const modal = new bootstrap.Modal(modalElement);
+        modal.show();
+    } catch (error) {
+        console.error('Error fetching book details:', error.message);
+        alert('Failed to fetch book details');
+    }
 }
 
 // Update Book
-function updateBook(bookId) {
-    // Collect all form values
+
+async function updateBook(bookId) {
     const title = document.getElementById('edit-book-title').value;
     const author = document.getElementById('edit-book-author').value;
     const isbn = document.getElementById('edit-book-isbn').value;
@@ -981,13 +1014,11 @@ function updateBook(bookId) {
     const edition = document.getElementById('edit-book-edition').value;
     const keywords = document.getElementById('edit-book-keywords').value;
 
-    // Validation
     if (!title || !author || !isbn || !category || !totalCopies) {
         alert('Please fill in all required fields');
         return;
     }
 
-    // Prepare book data object with all new fields
     const bookData = {
         title: title,
         author: author,
@@ -1001,39 +1032,44 @@ function updateBook(bookId) {
         publisher: publisher || '',
         edition: edition || '',
         keywords: keywords ? keywords.split(',').map(k => k.trim()) : [],
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+        updatedAt: new Date()
     };
 
-    // Update book in Firestore
-    firebase.firestore().collection('books').doc(bookId).update(bookData)
-    .then(() => {
+    try {
+        const { error } = await supabase.from('books').update(bookData).eq('id', bookId);
+
+        if (error) {
+            throw new Error('Failed to update book');
+        }
+
         alert('Book updated successfully');
-        // Close the modal
         const modalElement = document.getElementById('editBookModal');
         const modalInstance = bootstrap.Modal.getInstance(modalElement);
         modalInstance.hide();
-        
-        // Reload book list
+
         loadBookList(localStorage.getItem('userRole'));
-    })
-    .catch((error) => {
-        console.error('Error updating book:', error);
+    } catch (error) {
+        console.error('Error updating book:', error.message);
         alert('Failed to update book');
-    });
+    }
 }
 
 // Delete Book
-function deleteBook(bookId) {
+async function deleteBook(bookId) {
     if (confirm('Are you sure you want to delete this book?')) {
-        firebase.firestore().collection('books').doc(bookId).delete()
-            .then(() => {
-                alert('Book deleted successfully');
-                loadBookList(localStorage.getItem('userRole'));
-            })
-            .catch((error) => {
-                console.error('Error deleting book:', error);
-                alert('Failed to delete book');
-            });
+        try {
+            const { error } = await supabase.from('books').delete().eq('id', bookId);
+
+            if (error) {
+                throw new Error('Failed to delete book');
+            }
+
+            alert('Book deleted successfully');
+            loadBookList(localStorage.getItem('userRole'));
+        } catch (error) {
+            console.error('Error deleting book:', error.message);
+            alert('Failed to delete book');
+        }
     }
 }
 
@@ -1063,141 +1099,151 @@ function loadDocumentSection(role) {
 }
 
 // Load Document List
-function loadDocumentList(role) {
+
+async function loadDocumentList(role) {
     const documentListContainer = document.getElementById('document-list-container');
     documentListContainer.innerHTML = 'Loading documents...';
 
-    firebase.firestore().collection('documents').get()
-        .then((querySnapshot) => {
-            let tableHTML = `
-                <table class="table table-striped">
-                    <thead>
-                        <tr>
-                            <th>Title</th>
-                            <th>File Name</th>
-                            <th>Upload Date</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-            `;
+    const { data: documents, error } = await supabase.from('documents').select('*');
 
-            querySnapshot.forEach((doc) => {
-                const document = doc.data();
-                const documentId = doc.id;
-                tableHTML += `
-                    <tr>
-                        <td>${document.title}</td>
-                        <td>${document.fileName}</td>
-                        <td>${document.uploadedAt ? new Date(document.uploadedAt.toDate()).toLocaleDateString() : 'Unknown'}</td>
-                        <td>
-                            <div class="btn-group" role="group">
-                                <button class="btn btn-sm btn-success" onclick="viewDocument('${documentId}')">
-                                    <i class="fas fa-eye"></i> View
-                                </button>
-                                <button class="btn btn-sm btn-primary" onclick="downloadDocument('${documentId}')">
-                                    <i class="fas fa-download"></i> Download
-                                </button>
-                                ${role === 'admin' || role === 'teacher' ? `
-                                    <button class="btn btn-sm btn-warning" onclick="editDocument('${documentId}')">
-                                        <i class="fas fa-edit"></i> Edit
-                                    </button>
-                                    <button class="btn btn-sm btn-danger" onclick="deleteDocument('${documentId}')">
-                                        <i class="fas fa-trash"></i> Delete
-                                    </button>
-                                ` : ''}
-                            </div>
-                        </td>
-                    </tr>
-                `;
-            });
+    if (error) {
+        console.error('Error loading documents:', error.message);
+        documentListContainer.innerHTML = 'Failed to load documents';
+        return;
+    }
 
-            tableHTML += `
-                    </tbody>
-                </table>
-            `;
+    let tableHTML = `
+        <table class="table table-striped">
+            <thead>
+                <tr>
+                    <th>Title</th>
+                    <th>File Name</th>
+                    <th>Upload Date</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+    `;
 
-            documentListContainer.innerHTML = tableHTML;
-        })
-        .catch((error) => {
-            console.error('Error loading documents:', error);
-            documentListContainer.innerHTML = 'Failed to load documents';
-        });
+    documents.forEach((document) => {
+        const documentId = document.id;
+        tableHTML += `
+            <tr>
+                <td>${document.title}</td>
+                <td>${document.fileName}</td>
+                <td>${document.uploadedAt ? new Date(document.uploadedAt).toLocaleDateString() : 'Unknown'}</td>
+                <td>
+                    <div class="btn-group" role="group">
+                        <button class="btn btn-sm btn-success" onclick="viewDocument('${documentId}')">
+                            <i class="fas fa-eye"></i> View
+                        </button>
+                        <button class="btn btn-sm btn-primary" onclick="downloadDocument('${documentId}')">
+                            <i class="fas fa-download"></i> Download
+                        </button>
+                        ${role === 'admin' || role === 'teacher' ? `
+                            <button class="btn btn-sm btn-warning" onclick="editDocument('${documentId}')">
+                                <i class="fas fa-edit"></i> Edit
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteDocument('${documentId}')">
+                                <i class="fas fa-trash"></i> Delete
+                            </button>
+                        ` : ''}
+                    </div>
+                </td>
+            </tr>
+        `;
+    });
+
+    tableHTML += `
+            </tbody>
+        </table>
+    `;
+
+    documentListContainer.innerHTML = tableHTML;
 }
 
 // View Document Details
-function viewDocument(documentId) {
-    firebase.firestore().collection('documents').doc(documentId).get()
-        .then((doc) => {
-            if (doc.exists) {
-                const document = doc.data();
-                const modalHTML = `
-                    <div class="modal fade" id="documentDetailsModal" tabindex="-1">
-                        <div class="modal-dialog">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h5 class="modal-title">Document Details</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+
+async function viewDocument(documentId) {
+    try {
+        const { data: document, error } = await supabase
+            .from('documents')
+            .select('*')
+            .eq('id', documentId)
+            .single();
+
+        if (error || !document) {
+            throw new Error('Failed to fetch document details');
+        }
+
+        const modalHTML = `
+            <div class="modal fade" id="documentDetailsModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Document Details</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <strong>Title:</strong> ${document.title}
                                 </div>
-                                <div class="modal-body">
-                                    <div class="row">
-                                        <div class="col-md-6">
-                                            <strong>Title:</strong> ${document.title}
-                                        </div>
-                                        <div class="col-md-6">
-                                            <strong>File Name:</strong> ${document.fileName}
-                                        </div>
-                                    </div>
-                                    <div class="row mt-3">
-                                        <div class="col-md-6">
-                                            <strong>Upload Date:</strong> ${document.uploadedAt ? new Date(document.uploadedAt.toDate()).toLocaleString() : 'Unknown'}
-                                        </div>
-                                    </div>
+                                <div class="col-md-6">
+                                    <strong>File Name:</strong> ${document.fileName}
                                 </div>
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                                    <button type="button" class="btn btn-primary" onclick="downloadDocument('${documentId}')">Download</button>
+                            </div>
+                            <div class="row mt-3">
+                                <div class="col-md-6">
+                                    <strong>Upload Date:</strong> ${document.uploadedAt ? new Date(document.uploadedAt).toLocaleString() : 'Unknown'}
                                 </div>
                             </div>
                         </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            <button type="button" class="btn btn-primary" onclick="downloadDocument('${documentId}')">Download</button>
+                        </div>
                     </div>
-                `;
-                
-                // Create modal
-                const modalContainer = document.createElement('div');
-                modalContainer.innerHTML = modalHTML;
-                document.body.appendChild(modalContainer);
-                
-                // Show modal using Bootstrap
-                const modalElement = document.getElementById('documentDetailsModal');
-                const modal = new bootstrap.Modal(modalElement);
-                modal.show();
-            }
-        })
-        .catch((error) => {
-            console.error('Error fetching document details:', error);
-            alert('Failed to fetch document details');
-        });
+                </div>
+            </div>
+        `;
+        
+        const modalContainer = document.createElement('div');
+        modalContainer.innerHTML = modalHTML;
+        document.body.appendChild(modalContainer);
+        
+        const modalElement = document.getElementById('documentDetailsModal');
+        const modal = new bootstrap.Modal(modalElement);
+        modal.show();
+    } catch (error) {
+        console.error('Error fetching document details:', error.message);
+        alert('Failed to fetch document details');
+    }
 }
 
 // Download Document
-function downloadDocument(documentId) {
-    firebase.firestore().collection('documents').doc(documentId).get()
-        .then((doc) => {
-            if (doc.exists) {
-                const document = doc.data();
-                
-                // Create a temporary link element to trigger download
-                const link = document.createElement('a');
-                link.href = document.fileContent;
-                link.download = document.fileName;
-                link.click();
-            }
-        })
-        .catch((error) => {
-            console.error('Error downloading document:', error);
-            alert('Failed to download document');
-        });
+
+async function downloadDocument(documentId) {
+    try {
+        const { data: document, error } = await supabase
+            .from('documents')
+            .select('*')
+            .eq('id', documentId)
+            .single();
+
+        if (error || !document) {
+            throw new Error('Failed to fetch document for download');
+        }
+
+        // Create a temporary link element to trigger download
+        const link = document.createElement('a');
+        link.href = document.fileContent; // Assuming fileContent is a URL or base64 data
+        link.download = document.fileName;
+        link.click();
+    } catch (error) {
+        console.error('Error downloading document:', error.message);
+        alert('Failed to download document');
+    }
 }
 
 // Open Add Document Modal
@@ -1235,7 +1281,8 @@ function openAddDocumentModal() {
 }
 
 // Upload Document
-function uploadDocument() {
+
+async function uploadDocument() {
     const title = document.getElementById('document-title').value;
     const fileInput = document.getElementById('document-file');
 
@@ -1245,83 +1292,87 @@ function uploadDocument() {
     }
 
     const file = fileInput.files[0];
-    
-    // Convert file to base64
     const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = function() {
+
+    reader.onload = async function() {
         const base64data = reader.result;
 
-        // Save document metadata and base64 content to Firestore
-        firebase.firestore().collection('documents').add({
-            title: title,
-            fileName: file.name,
-            fileContent: base64data,
-            uploadedAt: firebase.firestore.FieldValue.serverTimestamp()
-        })
-        .then(() => {
+        try {
+            const { error } = await supabase.from('documents').insert({
+                title: title,
+                fileName: file.name,
+                fileContent: base64data,
+                uploadedAt: new Date()
+            });
+
+            if (error) {
+                throw new Error('Failed to upload document');
+            }
+
             alert('Document uploaded successfully');
-            // Close the modal
             const modalElement = document.getElementById('addDocumentModal');
             const modalInstance = bootstrap.Modal.getInstance(modalElement);
             modalInstance.hide();
-            
-            // Reload document list
+
             loadDocumentList(localStorage.getItem('userRole'));
-        })
-        .catch((error) => {
-            console.error('Error uploading document:', error);
+        } catch (error) {
+            console.error('Error uploading document:', error.message);
             alert('Failed to upload document');
-        });
+        }
     };
+
+    reader.readAsDataURL(file);
 }
 
 // Edit Document
-function editDocument(documentId) {
-    // Fetch document details
-    firebase.firestore().collection('documents').doc(documentId).get()
-        .then((doc) => {
-            if (doc.exists) {
-                const document = doc.data();
-                const modalHTML = `
-                    <div class="modal fade" id="editDocumentModal" tabindex="-1">
-                        <div class="modal-dialog">
-                            <div class="modal-content">
-                                <div class="modal-header">
-                                    <h5 class="modal-title">Edit Document</h5>
-                                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                                </div>
-                                <div class="modal-body">
-                                    <input type="text" id="edit-document-title" class="form-control mb-2" placeholder="Document Title" value="${document.title}" required>
-                                </div>
-                                <div class="modal-footer">
-                                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
-                                    <button type="button" class="btn btn-primary" onclick="updateDocument('${documentId}')">Save Changes</button>
-                                </div>
-                            </div>
+async function editDocument(documentId) {
+    try {
+        const { data: document, error } = await supabase
+            .from('documents')
+            .select('*')
+            .eq('id', documentId)
+            .single();
+
+        if (error || !document) {
+            throw new Error('Failed to fetch document details');
+        }
+
+        const modalHTML = `
+            <div class="modal fade" id="editDocumentModal" tabindex="-1">
+                <div class="modal-dialog">
+                    <div class="modal-content">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Edit Document</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <input type="text" id="edit-document-title" class="form-control mb-2" placeholder="Document Title" value="${document.title}" required>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+                            <button type="button" class="btn btn-primary" onclick="updateDocument('${documentId}')">Save Changes</button>
                         </div>
                     </div>
-                `;
-                
-                // Create modal
-                const modalContainer = document.createElement('div');
-                modalContainer.innerHTML = modalHTML;
-                document.body.appendChild(modalContainer);
-                
-                // Show modal using Bootstrap
-                const modalElement = document.getElementById('editDocumentModal');
-                const modal = new bootstrap.Modal(modalElement);
-                modal.show();
-            }
-        })
-        .catch((error) => {
-            console.error('Error fetching document details:', error);
-            alert('Failed to fetch document details');
-        });
+                </div>
+            </div>
+        `;
+        
+        const modalContainer = document.createElement('div');
+        modalContainer.innerHTML = modalHTML;
+        document.body.appendChild(modalContainer);
+        
+        const modalElement = document.getElementById('editDocumentModal');
+        const modal = new bootstrap.Modal(modalElement);
+        modal.show();
+    } catch (error) {
+        console.error('Error fetching document details:', error.message);
+        alert('Failed to fetch document details');
+    }
 }
 
 // Update Document
-function updateDocument(documentId) {
+
+async function updateDocument(documentId) {
     const title = document.getElementById('edit-document-title').value;
 
     if (!title) {
@@ -1329,38 +1380,41 @@ function updateDocument(documentId) {
         return;
     }
 
-    firebase.firestore().collection('documents').doc(documentId).update({
-        title: title,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    })
-    .then(() => {
+    try {
+        const { error } = await supabase.from('documents').update({ title: title, updatedAt: new Date() }).eq('id', documentId);
+
+        if (error) {
+            throw new Error('Failed to update document');
+        }
+
         alert('Document updated successfully');
-        // Close the modal
         const modalElement = document.getElementById('editDocumentModal');
         const modalInstance = bootstrap.Modal.getInstance(modalElement);
         modalInstance.hide();
-        
-        // Reload document list
+
         loadDocumentList(localStorage.getItem('userRole'));
-    })
-    .catch((error) => {
-        console.error('Error updating document:', error);
+    } catch (error) {
+        console.error('Error updating document:', error.message);
         alert('Failed to update document');
-    });
+    }
 }
 
 // Delete Document
-function deleteDocument(documentId) {
+async function deleteDocument(documentId) {
     if (confirm('Are you sure you want to delete this document?')) {
-        firebase.firestore().collection('documents').doc(documentId).delete()
-            .then(() => {
-                alert('Document deleted successfully');
-                loadDocumentList(localStorage.getItem('userRole'));
-            })
-            .catch((error) => {
-                console.error('Error deleting document:', error);
-                alert('Failed to delete document');
-            });
+        try {
+            const { error } = await supabase.from('documents').delete().eq('id', documentId);
+
+            if (error) {
+                throw new Error('Failed to delete document');
+            }
+
+            alert('Document deleted successfully');
+            loadDocumentList(localStorage.getItem('userRole'));
+        } catch (error) {
+            console.error('Error deleting document:', error.message);
+            alert('Failed to delete document');
+        }
     }
 }
 
@@ -1394,96 +1448,104 @@ function loadUserSection(role) {
     }
 }
 // Borrow Book Function
-function borrowBook(bookId) {
-    const currentUser = firebase.auth().currentUser;
-    
+
+async function borrowBook(bookId) {
+    const currentUser = supabase.auth.user();
+
     if (!currentUser) {
         alert('Please log in to borrow a book');
         return;
     }
 
-    // Calculate due date (30 days from now)
-    const borrowedDate = firebase.firestore.Timestamp.now();
+    const borrowedDate = new Date();
     const dueDate = new Date();
     dueDate.setDate(dueDate.getDate() + 30);
 
-    // Fetch book details
-    firebase.firestore().collection('books').doc(bookId).get()
-        .then((doc) => {
-            if (doc.exists) {
-                const book = doc.data();
-                
-                // Calculate available copies
-                const totalCopies = book.totalCopies || 0;
-                const borrowedCopies = book.borrowedHistory 
-                    ? book.borrowedHistory.filter(entry => !entry.returnDate).length 
-                    : 0;
-                const availableCopies = totalCopies - borrowedCopies;
+    try {
+        const { data: book, error: bookError } = await supabase
+            .from('books')
+            .select('*')
+            .eq('id', bookId)
+            .single();
 
-                // Check if book is available
-                if (availableCopies <= 0) {
-                    alert('Sorry, no copies of this book are currently available');
-                    return Promise.reject('No copies available');
-                }
+        if (bookError || !book) {
+            throw new Error('Book not found');
+        }
 
-                // Check if user has already borrowed this book
-                const isAlreadyBorrowed = book.borrowedHistory && book.borrowedHistory.some(
-                    entry => entry.borrowerId === currentUser.uid && !entry.returnDate
-                );
+        const totalCopies = book.totalCopies || 0;
+        const borrowedCopies = book.borrowedHistory
+            ? book.borrowedHistory.filter(entry => !entry.returnDate).length
+            : 0;
+        const availableCopies = totalCopies - borrowedCopies;
 
-                if (isAlreadyBorrowed) {
-                    alert('You have already borrowed this book');
-                    return Promise.reject('Book already borrowed by user');
-                }
+        if (availableCopies <= 0) {
+            alert('Sorry, no copies of this book are currently available');
+            return;
+        }
 
-                // Update book document
-                return firebase.firestore().collection('books').doc(bookId).update({
-                    borrowedHistory: firebase.firestore.FieldValue.arrayUnion({
-                        borrowerId: currentUser.uid,
+        const isAlreadyBorrowed = book.borrowedHistory && book.borrowedHistory.some(
+            entry => entry.borrowerId === currentUser.id && !entry.returnDate
+        );
+
+        if (isAlreadyBorrowed) {
+            alert('You have already borrowed this book');
+            return;
+        }
+
+        const { error: updateError } = await supabase
+            .from('books')
+            .update({
+                borrowedHistory: [
+                    ...book.borrowedHistory,
+                    {
+                        borrowerId: currentUser.id,
                         borrowerEmail: currentUser.email,
                         borrowedDate: borrowedDate,
-                        dueDate: firebase.firestore.Timestamp.fromDate(dueDate),
+                        dueDate: dueDate,
                         returnDate: null
-                    }),
-                    availableCopies: availableCopies - 1,
-                    status: availableCopies - 1 > 0 ? 'Partially Borrowed' : 'Fully Borrowed'
-                });
-            } else {
-                throw new Error('Book not found');
-            }
-        })
-        .then(() => {
-            // Create a borrowing record
-            return firebase.firestore().collection('borrowings').add({
+                    }
+                ],
+                availableCopies: availableCopies - 1,
+                status: availableCopies - 1 > 0 ? 'Partially Borrowed' : 'Fully Borrowed'
+            })
+            .eq('id', bookId);
+
+        if (updateError) {
+            throw new Error('Failed to update book');
+        }
+
+        const { error: borrowError } = await supabase
+            .from('borrowings')
+            .insert({
                 bookId: bookId,
-                userId: currentUser.uid,
+                userId: currentUser.id,
                 userEmail: currentUser.email,
-                borrowedDate: firebase.firestore.FieldValue.serverTimestamp(),
-                dueDate: firebase.firestore.Timestamp.fromDate(dueDate),
+                borrowedDate: borrowedDate,
+                dueDate: dueDate,
                 returnDate: null,
                 status: 'Borrowed'
             });
-        })
-        .then(() => {
-            alert('Book borrowed successfully! Please return within 30 days.');
-            // Reload book list
-            loadBookList(localStorage.getItem('userRole'));
-        })
-        .catch((error) => {
-            console.error('Error borrowing book:', error);
-            alert('Failed to borrow book: ' + error.message);
-        });
+
+        if (borrowError) {
+            throw new Error('Failed to create borrowing record');
+        }
+
+        alert('Book borrowed successfully! Please return within 30 days.');
+        loadBookList(localStorage.getItem('userRole'));
+    } catch (error) {
+        console.error('Error borrowing book:', error.message);
+        alert('Failed to borrow book: ' + error.message);
+    }
 }
 
-function returnBook(bookId) {
-    const currentUser = firebase.auth().currentUser;
-    
+async function returnBook(bookId) {
+    const currentUser = supabase.auth.user();
+
     if (!currentUser) {
         alert('Please log in to return a book');
         return;
     }
 
-    // Create modal for book condition assessment
     const modalHTML = `
         <div class="modal fade" id="bookReturnModal" tabindex="-1">
             <div class="modal-dialog">
@@ -1515,74 +1577,73 @@ function returnBook(bookId) {
         </div>
     `;
 
-    // Create modal container
     const modalContainer = document.createElement('div');
     modalContainer.innerHTML = modalHTML;
     document.body.appendChild(modalContainer);
 
-    // Show modal
     const modalElement = document.getElementById('bookReturnModal');
     const modal = new bootstrap.Modal(modalElement);
     modal.show();
 }
 
-function submitBookReturn(bookId) {
-    const currentUser = firebase.auth().currentUser;
+async function submitBookReturn(bookId) {
+    const currentUser = supabase.auth.user();
     const bookCondition = document.getElementById('book-condition').value;
     const comments = document.getElementById('return-comments').value;
 
-    // Fetch book details
-    firebase.firestore().collection('books').doc(bookId).get()
-        .then((doc) => {
-            if (doc.exists) {
-                const book = doc.data();
+    try {
+        const { data: book, error: bookError } = await supabase
+            .from('books')
+            .select('*')
+            .eq('id', bookId)
+            .single();
 
-                // Find the active borrowed entry for the current user
-                const activeBorrowedEntry = book.borrowedHistory 
-                    ? book.borrowedHistory.find(
-                        entry => entry.borrowerId === currentUser.uid && !entry.returnDate
-                    )
-                    : null;
+        if (bookError || !book) {
+            throw new Error('Book not found');
+        }
 
-                if (!activeBorrowedEntry) {
-                    throw new Error('No active borrowed book found');
-                }
+        const activeBorrowedEntry = book.borrowedHistory 
+            ? book.borrowedHistory.find(
+                entry => entry.borrowerId === currentUser.id && !entry.returnDate
+            )
+            : null;
 
-                // Create return request
-                return firebase.firestore().collection('return-requests').add({
-                    bookId: bookId,
-                    userId: currentUser.uid,
-                    userEmail: currentUser.email,
-                    bookTitle: book.title,
-                    condition: bookCondition,
-                    comments: comments,
-                    status: 'pending',
-                    requestDate: firebase.firestore.FieldValue.serverTimestamp(),
-                    borrowedDate: activeBorrowedEntry.borrowedDate
-                });
-            } else {
-                throw new Error('Book not found');
-            }
-        })
-        .then(() => {
-            alert('Return request submitted. Awaiting admin/teacher approval.');
-            
-            // Close the modal
-            const modalElement = document.getElementById('bookReturnModal');
-            const modalInstance = bootstrap.Modal.getInstance(modalElement);
-            modalInstance.hide();
-            
-            // Reload book list
-            loadBookList(localStorage.getItem('userRole'));
-        })
-        .catch((error) => {
-            console.error('Error submitting return request:', error);
-            alert('Failed to submit return request: ' + error.message);
-        });
+        if (!activeBorrowedEntry) {
+            throw new Error('No active borrowed book found');
+        }
+
+        const { error: returnRequestError } = await supabase
+            .from('return-requests')
+            .insert({
+                bookId: bookId,
+                userId: currentUser.id,
+                userEmail: currentUser.email,
+                bookTitle: book.title,
+                condition: bookCondition,
+                comments: comments,
+                status: 'pending',
+                requestDate: new Date(),
+                borrowedDate: activeBorrowedEntry.borrowedDate
+            });
+
+        if (returnRequestError) {
+            throw new Error('Failed to submit return request');
+        }
+
+        alert('Return request submitted. Awaiting admin/teacher approval.');
+        
+        const modalElement = document.getElementById('bookReturnModal');
+        const modalInstance = bootstrap.Modal.getInstance(modalElement);
+        modalInstance.hide();
+        
+        loadBookList(localStorage.getItem('userRole'));
+    } catch (error) {
+        console.error('Error submitting return request:', error.message);
+        alert('Failed to submit return request: ' + error.message);
+    }
 }
 
-function viewBorrowedBooks(bookId) {
-    // Create modal for borrowed books
+async function viewBorrowedBooks(bookId) {
     const modalHTML = `
         <div class="modal fade" id="borrowedBooksModal" tabindex="-1">
             <div class="modal-dialog modal-lg">
@@ -1604,188 +1665,131 @@ function viewBorrowedBooks(bookId) {
         </div>
     `;
 
-    // Create modal container
     const modalContainer = document.createElement('div');
     modalContainer.innerHTML = modalHTML;
     document.body.appendChild(modalContainer);
 
-    // Fetch book details
-    firebase.firestore().collection('books').doc(bookId).get()
-        .then((doc) => {
-            if (doc.exists) {
-                const book = doc.data();
-                const borrowedBooksList = document.getElementById('borrowed-books-list');
-                
-                // Filter active borrowed entries (only entries without return date)
-                const activeBorrowedBooks = book.borrowedHistory 
-                    ? book.borrowedHistory.filter(entry => !entry.returnDate)
-                    : [];
+    try {
+        const { data: book, error } = await supabase
+            .from('books')
+            .select('*')
+            .eq('id', bookId)
+            .single();
 
-                if (activeBorrowedBooks.length === 0) {
-                    borrowedBooksList.innerHTML = '<p>No books currently borrowed.</p>';
-                } else {
-                    let tableHTML = `
-                        <table class="table table-striped">
-                            <thead>
-                                <tr>
-                                    <th>Borrower Email</th>
-                                    <th>Borrowed Date</th>
-                                    <th>Due Date</th>
-                                    <th>Actions</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                    `;
+        if (error || !book) {
+            throw new Error('Failed to fetch borrowed books');
+        }
 
-                    activeBorrowedBooks.forEach((entry, index) => {
-                        tableHTML += `
-                            <tr>
-                                <td>${entry.borrowerEmail}</td>
-                                <td>${entry.borrowedDate ? new Date(entry.borrowedDate.toDate()).toLocaleDateString() : 'N/A'}</td>
-                                <td>${entry.dueDate ? new Date(entry.dueDate.toDate()).toLocaleDateString() : 'N/A'}</td>
-                                <td>
-                                    <button class="btn btn-sm btn-warning" onclick="returnBookByAdmin('${bookId}', '${entry.borrowerId}')">
-                                        <i class="fas fa-undo"></i> Return Book
-                                    </button>
-                                </td>
-                            </tr>
-                        `;
-                    });
+        const borrowedBooksList = document.getElementById('borrowed-books-list');
+        const activeBorrowedBooks = book.borrowedHistory 
+            ? book.borrowedHistory.filter(entry => !entry.returnDate)
+            : [];
 
-                    tableHTML += `
-                            </tbody>
-                        </table>
-                    `;
+        if (activeBorrowedBooks.length === 0) {
+            borrowedBooksList.innerHTML = '<p>No books currently borrowed.</p>';
+        } else {
+            let tableHTML = `
+                <table class="table table-striped">
+                    <thead>
+                        <tr>
+                            <th>Borrower Email</th>
+                            <th>Borrowed Date</th>
+                            <th>Due Date</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+            `;
 
-                    borrowedBooksList.innerHTML = tableHTML;
-                }
+            activeBorrowedBooks.forEach((entry) => {
+                tableHTML += `
+                    <tr>
+                        <td>${entry.borrowerEmail}</td>
+                        <td>${entry.borrowedDate ? new Date(entry.borrowedDate).toLocaleDateString() : 'N/A'}</td>
+                        <td>${entry.dueDate ? new Date(entry.dueDate).toLocaleDateString() : 'N/A'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-warning" onclick="returnBookByAdmin('${bookId}', '${entry.borrowerId}')">
+                                <i class="fas fa-undo"></i> Return Book
+                            </button>
+                        </td>
+                    </tr>
+                `;
+            });
 
-                // Show modal
-                const modalElement = document.getElementById('borrowedBooksModal');
-                const modal = new bootstrap.Modal(modalElement);
-                modal.show();
-            }
-        })
-        .catch((error) => {
-            console.error('Error fetching borrowed books:', error);
-            alert('Failed to fetch borrowed books');
-        });
+            tableHTML += `
+                    </tbody>
+                </table>
+            `;
+
+            borrowedBooksList.innerHTML = tableHTML;
+        }
+
+        const modalElement = document.getElementById('borrowedBooksModal');
+        const modal = new bootstrap.Modal(modalElement);
+        modal.show();
+    } catch (error) {
+        console.error('Error fetching borrowed books:', error.message);
+        alert('Failed to fetch borrowed books');
+    }
 }
 
-function returnBookByAdmin(bookId, borrowerIdentifier) {
-    console.group('Return Book Process');
-    console.log('Attempting to return book:', { 
-        bookId, 
-        borrowerIdentifier,
-        timestamp: new Date().toISOString(),
-        userRole: localStorage.getItem('userRole')
-    });
+async function returnBookByAdmin(bookId, borrowerId) {
+    try {
+        const { data: book, error } = await supabase
+            .from('books')
+            .select('*')
+            .eq('id', bookId)
+            .single();
 
-    // Validate inputs
-    if (!bookId || !borrowerIdentifier) {
-        console.error('Invalid input: Missing bookId or borrowerIdentifier');
-        alert('Invalid book return parameters');
-        console.groupEnd();
-        return;
-    }
+        if (error || !book) {
+            throw new Error('Book document not found');
+        }
 
-    // Fetch book details
-    firebase.firestore().collection('books').doc(bookId).get()
-        .then((doc) => {
-            console.log('Book Document Retrieval:', {
-                exists: doc.exists,
-                id: doc.id
-            });
+        const borrowedEntryIndex = book.borrowedHistory.findIndex(
+            entry => entry.borrowerId === borrowerId && !entry.returnDate
+        );
 
-            if (!doc.exists) {
-                throw new Error('Book document not found');
-            }
+        if (borrowedEntryIndex === -1) {
+            throw new Error('No active borrowed entry found for this user');
+        }
 
-            const book = doc.data();
-            console.log('Current Book Data:', JSON.stringify(book, null, 2));
+        const updatedBorrowedHistory = [...book.borrowedHistory];
+        updatedBorrowedHistory[borrowedEntryIndex] = {
+            ...updatedBorrowedHistory[borrowedEntryIndex],
+            returnDate: new Date(),
+            status: 'returned'
+        };
 
-            // Detailed borrowed history logging
-            console.log('Current Borrowed History:', 
-                book.borrowedHistory ? 
-                book.borrowedHistory.map(entry => ({
-                    borrowerId: entry.borrowerId,
-                    hasReturnDate: !!entry.returnDate
-                })) : 
-                'No borrowed history'
-            );
+        const totalCopies = book.totalCopies || 0;
+        const activeBorrowedCopies = updatedBorrowedHistory.filter(entry => !entry.returnDate).length;
+        const availableCopies = totalCopies - activeBorrowedCopies;
 
-            // Find the specific borrowed entry
-            const borrowedEntryIndex = book.borrowedHistory.findIndex(
-                entry => entry.borrowerId === borrowerIdentifier && !entry.returnDate
-            );
-
-            console.log('Borrowed Entry Details:', {
-                index: borrowedEntryIndex,
-                entry: borrowedEntryIndex !== -1 ? book.borrowedHistory[borrowedEntryIndex] : 'No matching entry'
-            });
-
-            if (borrowedEntryIndex === -1) {
-                throw new Error('No active borrowed entry found for this user');
-            }
-
-            // Create updated borrowed history
-            const updatedBorrowedHistory = [...book.borrowedHistory];
-            updatedBorrowedHistory[borrowedEntryIndex] = {
-                ...updatedBorrowedHistory[borrowedEntryIndex],
-                returnDate: firebase.firestore.Timestamp.now(),
-                status: 'returned'
-            };
-
-            // Calculate available copies
-            const totalCopies = book.totalCopies || 0;
-            const activeBorrowedCopies = updatedBorrowedHistory.filter(entry => !entry.returnDate).length;
-            const availableCopies = totalCopies - activeBorrowedCopies;
-
-            console.log('Copies Calculation:', {
-                totalCopies,
-                activeBorrowedCopies,
-                availableCopies
-            });
-
-            // Prepare update data
-            const updateData = {
+        const { error: updateError } = await supabase
+            .from('books')
+            .update({
                 borrowedHistory: updatedBorrowedHistory,
                 availableCopies: availableCopies,
                 status: availableCopies > 0 ? 'Available' : 'Fully Borrowed'
-            };
+            })
+            .eq('id', bookId);
 
-            console.log('Prepared Update Data:', updateData);
+        if (updateError) {
+            throw new Error('Failed to update book');
+        }
 
-            // Update book document
-            return firebase.firestore().collection('books').doc(bookId).update(updateData);
-        })
-        .then(() => {
-            console.log('Book return process completed successfully');
-            alert('Book returned successfully!');
-            
-            // Refresh views
-            viewBorrowedBooks(bookId);
-            loadBookList(localStorage.getItem('userRole'));
-            
-            console.groupEnd();
-        })
-        .catch((error) => {
-            console.error('Comprehensive Error in Book Return:', {
-                message: error.message,
-                name: error.name,
-                stack: error.stack
-            });
-            alert('Failed to return book: ' + error.message);
-            console.groupEnd();
-        });
+        alert('Book returned successfully!');
+        viewBorrowedBooks(bookId);
+        loadBookList(localStorage.getItem('userRole'));
+    } catch (error) {
+        console.error('Error returning book:', error.message);
+        alert('Failed to return book: ' + error.message);
+    }
 }
 
-function viewReturnRequests() {
+async function viewReturnRequests() {
     const roleContent = document.getElementById('role-content');
-    const currentUser = firebase.auth().currentUser;
     const userRole = localStorage.getItem('userRole');
 
-    // Check user permissions
     if (userRole !== 'admin' && userRole !== 'teacher') {
         roleContent.innerHTML = `
             <div class="container-fluid">
@@ -1797,7 +1801,6 @@ function viewReturnRequests() {
         return;
     }
 
-    // Show loading state
     roleContent.innerHTML = `
         <div class="container-fluid text-center">
             <div class="spinner-border" role="status">
@@ -1807,98 +1810,96 @@ function viewReturnRequests() {
         </div>
     `;
 
-    // Fetch pending return requests
-    firebase.firestore().collection('return-requests')
-        .where('status', '==', 'pending')
-        .get()
-        .then((querySnapshot) => {
-            // Check if any requests exist
-            if (querySnapshot.empty) {
-                roleContent.innerHTML = `
-                    <div class="container-fluid">
-                        <div class="alert alert-info">
-                            No pending return requests.
-                        </div>
-                    </div>
-                `;
-                return;
-            }
+    try {
+        const { data: requests, error } = await supabase
+            .from('return-requests')
+            .select('*')
+            .eq('status', 'pending');
 
-            // Create table to display requests
-            let tableHTML = `
-                <div class="container-fluid">
-                    <h2 class="mb-4">Return Requests</h2>
-                    <div class="card">
-                        <div class="card-body">
-                            <div class="table-responsive">
-                                <table class="table table-striped">
-                                    <thead>
-                                        <tr>
-                                            <th>Book Title</th>
-                                            <th>Borrower</th>
-                                            <th>Borrowed Date</th>
-                                            <th>Return Condition</th>
-                                            <th>Comments</th>
-                                            <th>Actions</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-            `;
+        if (error) {
+            throw new Error('Failed to load return requests');
+        }
 
-            // Populate table with requests
-            querySnapshot.forEach((doc) => {
-                const request = doc.data();
-                const requestId = doc.id;
-
-                tableHTML += `
-                    <tr>
-                        <td>${request.bookTitle || 'N/A'}</td>
-                        <td>${request.userEmail}</td>
-                        <td>${request.borrowedDate ? new Date(request.borrowedDate.toDate()).toLocaleDateString() : 'N/A'}</td>
-                        <td>
-                            <span class="badge ${getConditionBadgeClass(request.condition)}">
-                                ${request.condition || 'N/A'}
-                            </span>
-                        </td>
-                        <td>${request.comments || 'No comments'}</td>
-                        <td>
-                            <div class="btn-group" role="group">
-                                <button class="btn btn-sm btn-success" onclick="processReturnRequest('${requestId}', 'accept')">
-                                    <i class="fas fa-check"></i> Accept
-                                </button>
-                                <button class="btn btn-sm btn-warning" onclick="processReturnRequest('${requestId}', 'penalty')">
-                                    <i class="fas fa-dollar-sign"></i> Penalty
-                                </button>
-                                <button class="btn btn-sm btn-danger" onclick="processReturnRequest('${requestId}', 'reject')">
-                                    <i class="fas fa-times"></i> Reject
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                `;
-            });
-
-            tableHTML += `
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            `;
-
-            roleContent.innerHTML = tableHTML;
-        })
-        .catch((error) => {
-            console.error('Error fetching return requests:', error);
+        if (requests.length === 0) {
             roleContent.innerHTML = `
                 <div class="container-fluid">
-                    <div class="alert alert-danger">
-                        Failed to load return requests: ${error.message}
+                    <div class="alert alert-info">
+                        No pending return requests.
                     </div>
                 </div>
             `;
+            return;
+        }
+
+        let tableHTML = `
+            <div class="container-fluid">
+                <h2 class="mb-4">Return Requests</h2>
+                <div class="card">
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Book Title</th>
+                                        <th>Borrower</th>
+                                        <th>Borrowed Date</th>
+                                        <th>Return Condition</th>
+                                        <th>Comments</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+        `;
+
+        requests.forEach((request) => {
+            tableHTML += `
+                <tr>
+                    <td>${request.bookTitle || 'N/A'}</td>
+                    <td>${request.userEmail}</td>
+                    <td>${request.borrowedDate ? new Date(request.borrowedDate).toLocaleDateString() : 'N/A'}</td>
+                    <td>
+                        <span class="badge ${getConditionBadgeClass(request.condition)}">
+                            ${request.condition || 'N/A'}
+                        </span>
+                    </td>
+                    <td>${request.comments || 'No comments'}</td>
+                    <td>
+                        <div class="btn-group" role="group">
+                            <button class="btn btn-sm btn-success" onclick="processReturnRequest('${request.id}', 'accept')">
+                                <i class="fas fa-check"></i> Accept
+                            </button>
+                            <button class="btn btn-sm btn-warning" onclick="processReturnRequest('${request.id}', 'penalty')">
+                                <i class="fas fa-dollar-sign"></i> Penalty
+                            </button>
+                            <button class="btn btn-sm btn-danger" onclick="processReturnRequest('${request.id}', 'reject')">
+                                <i class="fas fa-times"></i> Reject
+                            </button>
+                        </div>
+                    </td>
+                </tr>
+            `;
         });
+
+        tableHTML += `
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+
+        roleContent.innerHTML = tableHTML;
+    } catch (error) {
+        console.error('Error fetching return requests:', error.message);
+        roleContent.innerHTML = `
+            <div class="container-fluid">
+                <div class="alert alert-danger">
+                    Failed to load return requests: ${error.message}
+                </div>
+            </div>
+        `;
+    }
 }
 
 // Helper function to get badge class based on condition
@@ -2406,10 +2407,9 @@ function finalizeReturnRequest(requestId, action) {
         });
 }
 
-function processReturnRequest(requestId, action) {
+async function processReturnRequest(requestId, action) {
     console.log('Processing return request:', { requestId, action });
 
-    // Validate action
     const validActions = ['accept', 'penalty', 'reject'];
     if (!validActions.includes(action)) {
         console.error('Invalid action:', action);
@@ -2417,7 +2417,6 @@ function processReturnRequest(requestId, action) {
         return;
     }
 
-    // Confirm action
     const actionText = {
         'accept': 'accept',
         'penalty': 'accept with penalty',
@@ -2428,90 +2427,108 @@ function processReturnRequest(requestId, action) {
         return;
     }
 
-    // Get current user
-    const currentUser = firebase.auth().currentUser;
+    const currentUser = supabase.auth.user();
     if (!currentUser) {
         alert('Authentication required');
         return;
     }
 
-    // Batch write to update multiple documents
-    const batch = firebase.firestore().batch();
+    try {
+        const { data: request, error: requestError } = await supabase
+            .from('return-requests')
+            .select('*')
+            .eq('id', requestId)
+            .single();
 
-    // Fetch the return request first
-    firebase.firestore().collection('return-requests').doc(requestId).get()
-        .then((requestDoc) => {
-            if (!requestDoc.exists) {
-                throw new Error('Return request not found');
+        if (requestError || !request) {
+            throw new Error('Return request not found');
+        }
+
+        const { data: book, error: bookError } = await supabase
+            .from('books')
+            .select('*')
+            .eq('id', request.bookId)
+            .single();
+
+        if (bookError || !book) {
+            throw new Error('Book not found');
+        }
+
+        const updatedBorrowedHistory = book.borrowedHistory.map(entry => {
+            if (entry.borrowerId === request.userId && !entry.returnDate) {
+                return {
+                    ...entry,
+                    returnDate: new Date(),
+                    status: action === 'accept' ? 'returned' : 
+                            action === 'penalty' ? 'returned-with-penalty' : 
+                            'return-rejected'
+                };
+            }
+            return entry;
+        });
+
+        const totalCopies = book.totalCopies || 0;
+        const activeBorrowedCopies = updatedBorrowedHistory.filter(entry => !entry.returnDate).length;
+        const availableCopies = totalCopies - activeBorrowedCopies;
+
+        const { error: updateBookError } = await supabase
+            .from('books')
+            .update({
+                borrowedHistory: updatedBorrowedHistory,
+                availableCopies: availableCopies,
+                status: availableCopies > 0 ? 'Available' : 'Fully Borrowed'
+            })
+            .eq('id', request.bookId);
+
+        if (updateBookError) {
+            throw new Error('Failed to update book');
+        }
+
+        const updateRequestData = {
+            status: action === 'reject' ? 'rejected' : 'completed',
+            adminAction: action,
+            processedBy: currentUser.id,
+            processedDate: new Date()
+        };
+
+        const { error: updateRequestError } = await supabase
+            .from('return-requests')
+            .update(updateRequestData)
+            .eq('id', requestId);
+
+        if (updateRequestError) {
+            throw new Error('Failed to update return request');
+        }
+
+        if (action === 'penalty') {
+            const penaltyAmount = parseInt(prompt('Enter penalty amount:', '0'), 10);
+            if (isNaN(penaltyAmount) || penaltyAmount <= 0) {
+                alert('Invalid penalty amount');
+                return;
             }
 
-            const requestData = requestDoc.data();
-            console.log('Request data:', requestData);
-
-            // Fetch the book details
-            return firebase.firestore().collection('books').doc(requestData.bookId).get()
-                .then((bookDoc) => {
-                    if (!bookDoc.exists) {
-                        throw new Error('Book not found');
-                    }
-
-                    const bookData = bookDoc.data();
-                    console.log('Book data:', bookData);
-
-                    // Prepare updated borrowed history
-                    const updatedBorrowedHistory = bookData.borrowedHistory.map(entry => {
-                        if (entry.borrowerId === requestData.userId && !entry.returnDate) {
-                            return {
-                                ...entry,
-                                returnDate: firebase.firestore.Timestamp.now(),
-                                status: action === 'accept' ? 'returned' : 
-                                        action === 'penalty' ? 'returned-with-penalty' : 
-                                        'return-rejected'
-                            };
-                        }
-                        return entry;
-                    });
-
-                    // Calculate available copies
-                    const totalCopies = bookData.totalCopies || 0;
-                    const activeBorrowedCopies = updatedBorrowedHistory.filter(entry => !entry.returnDate).length;
-                    const availableCopies = totalCopies - activeBorrowedCopies;
-
-                    // Prepare book update
-                    const bookUpdateData = {
-                        borrowedHistory: updatedBorrowedHistory,
-                        availableCopies: availableCopies,
-                        status: availableCopies > 0 ? 'Available' : 'Fully Borrowed'
-                    };
-
-                    // Update book document in batch
-                    const bookRef = firebase.firestore().collection('books').doc(requestData.bookId);
-                    batch.update(bookRef, bookUpdateData);
-
-                    // Update return request in batch
-                    const requestRef = firebase.firestore().collection('return-requests').doc(requestId);
-                    batch.update(requestRef, {
-                        status: action === 'reject' ? 'rejected' : 'completed',
-                        adminAction: action,
-                        processedBy: currentUser.uid,
-                        processedDate: firebase.firestore.FieldValue.serverTimestamp()
-                    });
-
-                    // Commit batch write
-                    return batch.commit();
+            const { error: penaltyError } = await supabase
+                .from('penalties')
+                .insert({
+                    userId: request.userId,
+                    bookId: request.bookId,
+                    amount: penaltyAmount,
+                    reason: `Book returned in ${request.condition} condition`,
+                    status: 'pending',
+                    createdAt: new Date()
                 });
-        })
-        .then(() => {
-            console.log('Return request processed successfully');
-            alert('Return request processed successfully');
-            
-            // Refresh return requests view
-            viewReturnRequests();
-        })
-        .catch((error) => {
-            console.error('Error processing return request:', error);
-            alert(`Failed to process return request: ${error.message}`);
-        });
+
+            if (penaltyError) {
+                throw new Error('Failed to record penalty');
+            }
+        }
+
+        alert('Return request processed successfully');
+        viewReturnRequests();
+    } catch (error) {
+        console.error('Error processing return request:', error.message);
+        alert(`Failed to process return request: ${error.message}`);
+    }
 }
 
 function finalizeReturnRequest(requestId, action) {
