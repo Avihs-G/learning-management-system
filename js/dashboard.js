@@ -1673,9 +1673,13 @@ function viewBorrowedBooks(bookId) {
 }
 
 function returnBookByAdmin(bookId, borrowerIdentifier) {
-    console.log('Returning book:', { bookId, borrowerIdentifier });
+    console.log('Returning book:', { 
+        bookId, 
+        borrowerIdentifier,
+        timestamp: new Date() 
+    });
 
-    // Fetch book details
+    // Fetch book details with detailed logging
     firebase.firestore().collection('books').doc(bookId).get()
         .then((doc) => {
             if (!doc.exists) {
@@ -1684,14 +1688,28 @@ function returnBookByAdmin(bookId, borrowerIdentifier) {
 
             const book = doc.data();
             
-            // Create a copy of borrowed history
-            const updatedBorrowedHistory = book.borrowedHistory.map(entry => {
-                // Check if entry matches borrower and hasn't been returned
-                const matchesBorrower = typeof borrowerIdentifier === 'string' 
-                    ? entry.borrowerId === borrowerIdentifier 
-                    : true;
+            // Log full book document structure
+            console.log('Full Book Document:', {
+                id: doc.id,
+                data: book
+            });
 
-                if (matchesBorrower && !entry.returnDate) {
+            // Log current borrowed history
+            console.log('Current Borrowed History:', book.borrowedHistory);
+
+            // Create a copy of borrowed history with detailed logging
+            const updatedBorrowedHistory = book.borrowedHistory.map(entry => {
+                const matchesBorrower = entry.borrowerId === borrowerIdentifier && !entry.returnDate;
+                
+                console.log('Checking Borrowed Entry:', {
+                    entry,
+                    matchesBorrower,
+                    currentBorrowerId: entry.borrowerId,
+                    inputBorrowerId: borrowerIdentifier,
+                    hasReturnDate: !!entry.returnDate
+                });
+
+                if (matchesBorrower) {
                     return {
                         ...entry,
                         returnDate: firebase.firestore.Timestamp.now(),
@@ -1706,6 +1724,12 @@ function returnBookByAdmin(bookId, borrowerIdentifier) {
             const activeBorrowedCopies = updatedBorrowedHistory.filter(entry => !entry.returnDate).length;
             const availableCopies = totalCopies - activeBorrowedCopies;
 
+            console.log('Update Calculations:', {
+                totalCopies,
+                activeBorrowedCopies,
+                availableCopies
+            });
+
             // Prepare update data
             const updateData = {
                 borrowedHistory: updatedBorrowedHistory,
@@ -1713,16 +1737,21 @@ function returnBookByAdmin(bookId, borrowerIdentifier) {
                 status: availableCopies > 0 ? 'Available' : 'Fully Borrowed'
             };
 
+            console.log('Prepared Update Data:', updateData);
+
             // Update book document
             return firebase.firestore().collection('books').doc(bookId).update(updateData)
                 .then(() => {
                     // Update borrowing records
                     return firebase.firestore().collection('borrowings')
                         .where('bookId', '==', bookId)
+                        .where('userId', '==', borrowerIdentifier)
                         .where('returnDate', '==', null)
                         .get();
                 })
                 .then((querySnapshot) => {
+                    console.log('Borrowing Records Found:', querySnapshot.size);
+
                     const batch = firebase.firestore().batch();
                     
                     querySnapshot.forEach((doc) => {
