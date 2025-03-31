@@ -3,7 +3,7 @@ name: Deploy Website
 on:
   push:
     branches:
-      - main  # Adjust branch name if needed
+      - main  # Adjust if using a different branch
 
 jobs:
   deploy:
@@ -12,6 +12,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          persist-credentials: false  # Prevents using default GitHub credentials
 
       - name: Inject Firebase Secrets
         run: |
@@ -25,8 +27,21 @@ jobs:
             measurementId: '${{ secrets.FIREBASE_MEASUREMENT_ID }}'
           };\n\nfirebase.initializeApp(firebaseConfig);" > js/firebase-config.js
 
+      - name: Configure Git
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+
+      - name: Commit and Push Changes
+        run: |
+          git add js/firebase-config.js
+          git commit -m "Inject Firebase secrets"
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git HEAD:gh-pages
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Deploy Website
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          branch: gh-pages  # Change if deploying to a different branch
-          folder: .  # Deploy the entire repository
+          branch: gh-pages  # Change this if deploying to another branch
+          folder: .  # Deploy everything
