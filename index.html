@@ -92,7 +92,7 @@
                                 </div>
                             </div>
                             <div class="d-grid">
-                                <button type="submit" class="btn btn-primary" onclick="event.preventDefault(); login();">
+                                <button type="submit" class="btn btn-primary">
                                     <i class="fas fa-sign-in-alt me-2"></i>Login
                                 </button>
                             </div>
@@ -106,64 +106,84 @@
     <!-- Bootstrap JS -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.3/dist/js/bootstrap.bundle.min.js"></script>
 
-    <!-- Supabase Configuration -->
-    <script type="module" src="js/supabase-config.js"></script>
+    <!-- Supabase Script -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+    <script>
+        // Supabase Configuration
+        const SUPABASE_URL = "https://xrnqvtsjmtbxgkdvykrn.supabase.co";
+        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InhybnF2dHNqbXRieGdrZHZ5a3JuIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDM0MDM4NzIsImV4cCI6MjA1ODk3OTg3Mn0.TX-krSoOERfe1AiWAVj5hldgvVRZMLzMBcS4yxJuk1w";
 
-    <script type="module">
-        import { supabase } from './js/supabase-config.js';
+        // Initialize Supabase client
+        const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-        async function login() {
-            const email = document.getElementById('email').value;
-            const password = document.getElementById('password').value;
-
-            const loginButton = document.querySelector('button[type="submit"]');
-            loginButton.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Logging in...';
-            loginButton.disabled = true;
+        document.getElementById('loginForm').addEventListener('submit', async (e) => {
+            e.preventDefault()
+            
+            const email = document.getElementById('email').value
+            const password = document.getElementById('password').value
 
             try {
-                const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+                console.log('Attempting login:', email)
+                
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email: email,
+                    password: password
+                })
 
+                // DETAILED LOGGING OF AUTHENTICATION RESPONSE
+                console.log('Full Authentication Response:', JSON.stringify(data, null, 2))
+                console.log('User Object:', JSON.stringify(data.user, null, 2))
+                
                 if (error) {
-                    throw error;
+                    throw error
                 }
 
-                const { data: userData, error: roleError } = await supabase
-                    .from('users')
-                    .select('role')
-                    .eq('id', data.user.id)
-                    .single();
+                // MULTIPLE WAYS TO ACCESS USER ID
+                console.log('Authentication User ID Methods:')
+                console.log('data.user.id:', data.user.id)
+                console.log('data.user.uuid:', data.user.uuid)
+                console.log('Full User Object:', data.user)
 
-                if (roleError) {
-                    throw roleError;
+                // Fetch current authenticated user details
+                const { data: { user }, error: userError } = await supabase.auth.getUser()
+                
+                if (userError) {
+                    throw userError
                 }
 
-                localStorage.setItem('userRole', userData.role || 'student');
-                window.location.href = 'dashboard.html';
+                console.log('Authenticated User Details:', JSON.stringify(user, null, 2))
+                console.log('Authenticated User ID:', user.id)
+
+                // Fetch user profile
+                const { data: profileData, error: profileError } = await supabase
+                    .from('user_profiles')
+                    .select('*')
+                    .eq('id', user.id)
+                    .single()
+
+                console.log('Profile Data:', { profileData, profileError })
+
+                if (profileError) {
+                    throw profileError
+                }
+
+                // Store role and redirect
+                localStorage.setItem('userRole', profileData.role || 'student')
+                window.location.href = 'dashboard.html'
+
             } catch (error) {
-                loginButton.innerHTML = '<i class="fas fa-sign-in-alt me-2"></i>Login';
-                loginButton.disabled = false;
-
-                console.error('Login Error:', error);
-
-                switch (error.message) {
-                    case 'Invalid login credentials':
-                        alert('Incorrect email or password. Please try again.');
-                        break;
-                    default:
-                        alert('Login failed. Please check your credentials.');
-                }
+                console.error('Login Error:', error)
+                
+                // More detailed error logging
+                console.log('Error Details:', {
+                    code: error.code,
+                    message: error.message,
+                    details: error.details
+                })
+                
+                alert(error.message || 'Login failed')
             }
-        }
-
-        document.getElementById('password').addEventListener('keypress', function(event) {
-            if (event.key === 'Enter') {
-                login();
-            }
-        });
-
-        window.addEventListener('error', (event) => {
-            console.error('Unhandled error:', event.error);
-        });
+        })
     </script>
 </body>
 </html>

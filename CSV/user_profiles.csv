@@ -1,0 +1,6 @@
+id,name,email,role,department,created_at,status,profilePicture,updated_at
+c0995261-65b7-4efe-90e2-e559c119d064,Admin User,admin@avihs-g.github.io,admin,Administration,2023-01-01 10:00:00,active,,2023-01-01 10:00:00
+93c796e3-9d6b-4680-8352-aac6161bfce6,Student2,student2@avihs-g.github.io,student,Electrical Engineering,2023-01-08 17:00:00,active,,2023-01-08 17:00:00
+e2176c71-1a5c-4008-936f-60670fde637c,Student1,student1@avihs-g.github.io,student,Computer Science,2023-01-07 16:00:00,active,,2023-01-07 16:00:00
+bb0879e9-40d8-4969-a5b6-05199e9c32be,Teacher1,teacher1@avihs-g.github.io,teacher,Computer Science,2023-01-02 11:00:00,active,,2023-01-02 11:00:00
+34a497e1-5749-4414-a811-782a5d99aaaa,Teacher2,teacher2@avihs-g.github.io,teacher,Electrical Engineering,2023-01-03 12:00:00,active,,2023-01-03 12:00:00

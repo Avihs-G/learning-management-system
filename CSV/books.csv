@@ -1,0 +1,6 @@
+id,title,author,isbn,category,totalCopies,availableCopies,borrowedHistory,created_at,updated_at
+123e4567-e89b-12d3-a456-426614174001,The Great Gatsby,F. Scott Fitzgerald,9780743273565,Fiction,10,10,"[]",2023-01-01 10:00:00,2023-01-01 10:00:00
+123e4567-e89b-12d3-a456-426614174002,1984,George Orwell,9780451524935,Science Fiction,8,8,"[]",2023-01-02 11:00:00,2023-01-02 11:00:00
+123e4567-e89b-12d3-a456-426614174003,To Kill a Mockingbird,Harper Lee,9780061120084,Classic,5,5,"[]",2023-01-03 12:00:00,2023-01-03 12:00:00
+123e4567-e89b-12d3-a456-426614174004,The Catcher in the Rye,J.D. Salinger,9780316769488,Classic,7,7,"[]",2023-01-04 12:00:00,2023-01-04 12:00:00
+123e4567-e89b-12d3-a456-426614174005,Brave New World,Aldous Huxley,9780060850524,Dystopian,6,6,"[]",2023-01-05 12:00:00,2023-01-05 12:00:00
