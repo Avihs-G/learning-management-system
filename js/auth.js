@@ -133,36 +133,70 @@ function logout() {
 
 // Authentication State Observer
 // In auth.js
+
+// Authentication State Observer
 firebase.auth().onAuthStateChanged((user) => {
-    // Find elements safely
+    console.group('Authentication State Change');
+    console.log('User:', user ? user.email : 'Not logged in');
+
+    // Find elements with detailed logging
     const authSection = document.getElementById('auth-section');
     const dashboardSection = document.getElementById('dashboard');
 
-    // Safely update styles with null checks
-    if (authSection) {
-        authSection.style.display = user ? 'none' : 'block';
-    }
+    console.log('DOM Elements:', {
+        authSection: !!authSection,
+        dashboardSection: !!dashboardSection
+    });
 
-    if (dashboardSection) {
-        dashboardSection.style.display = user ? 'block' : 'none';
+    // Null-safe style updates with logging
+    try {
+        if (authSection) {
+            authSection.style.display = user ? 'none' : 'block';
+            console.log('Auth Section Display:', authSection.style.display);
+        } else {
+            console.warn('Auth section element not found');
+        }
+
+        if (dashboardSection) {
+            dashboardSection.style.display = user ? 'block' : 'none';
+            console.log('Dashboard Section Display:', dashboardSection.style.display);
+        } else {
+            console.warn('Dashboard section element not found');
+        }
+    } catch (styleError) {
+        console.error('Error updating element styles:', styleError);
     }
 
     if (user) {
-        // Existing user authentication logic
+        // Fetch user details with error handling
         firebase.firestore().collection('users').doc(user.uid).get()
             .then((doc) => {
                 if (doc.exists) {
                     const userData = doc.data();
+                    console.log('User Data:', userData);
                     
                     // Update welcome message safely
                     const userWelcomeElement = document.getElementById('user-welcome');
                     if (userWelcomeElement) {
                         userWelcomeElement.textContent = userData.name || user.email;
+                        console.log('Welcome message updated');
+                    } else {
+                        console.warn('User welcome element not found');
                     }
+                } else {
+                    console.warn('User document not found');
                 }
             })
             .catch((error) => {
-                console.error('Error fetching user data:', error);
+                console.error('Error fetching user data:', {
+                    message: error.message,
+                    code: error.code
+                });
+            })
+            .finally(() => {
+                console.groupEnd();
             });
+    } else {
+        console.groupEnd();
     }
 });
