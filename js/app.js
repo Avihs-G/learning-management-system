@@ -1,5 +1,3 @@
-import { supabase } from './supabase-config.js';
-
 // Global error handling
 window.addEventListener('error', (event) => {
     console.error('Unhandled error:', event.error);
@@ -37,22 +35,4 @@ window.addEventListener('online', () => {
 
 window.addEventListener('offline', () => {
     showNotification('Internet connection lost', 'danger');
-});
-
-// Function to check if the user is authenticated
-async function checkUserAuthentication() {
-    const { data: { user }, error } = await supabase.auth.getUser();
-
-    if (error || !user) {
-        showNotification('User not authenticated', 'warning');
-        window.location.href = 'index.html'; // Redirect to login page
-    } else {
-        console.log('User authenticated:', user);
-    }
-}
-
-// Initialize the application
-document.addEventListener('DOMContentLoaded', () => {
-    checkUserAuthentication();
-    checkInternetConnection();
 });
