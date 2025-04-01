@@ -1,3 +1,56 @@
+# Library Management System
+
+## Overview
+
+This project is a **Library Management System** developed entirely using AI chatbots, with no manual coding involved. The system provides functionalities for user authentication, book management, document management, and user administration, with role-based access control for admins, teachers, and students.
+
+This application is **free to use** with **no restrictions** at all.
+
+## Features
+
+### 1. User Authentication (`auth.js`)
+- **Login:** Secure login functionality for users.
+- **Sign Up:** User registration with email and password.
+- **Logout:** Secure logout functionality.
+
+### 2. Dashboard (Role-Based) (`dashboard.js`)
+- **Role-Based Views:** Different views for Admins, Teachers, and Students.
+- **Book Management:**
+  - View available books.
+  - Add, edit, and delete books (Admin/Teacher).
+  - Borrow and return books (Student).
+  - Assign books to students (Admin/Teacher).
+  - View borrowed books (Admin/Teacher).
+  - Return books on behalf of students (Admin/Teacher).
+  - Filter and search books by title, author, ISBN, etc.
+- **Document Management:**
+  - View uploaded documents.
+  - Upload documents (Admin/Teacher).
+  - View document details.
+  - Download documents.
+  - Edit and delete documents (Admin/Teacher).
+- **Dashboard Statistics:** View key statistics like total books, borrowed books, and overdue books.
+
+### 3. User Management (`user-management.js`)
+- **View Users:** Admin can view all users.
+- **Add User:** Admin can add new users.
+- **Edit User:** Admin can edit user details.
+- **Delete User:** Admin can delete users.
+- **Search Users:** Admin can search users by name or email.
+
+## Technologies Used
+
+- **Frontend:** JavaScript, HTML, CSS
+- **Database & Authentication:** Firebase (Version [Specify Firebase Version])
+- **Other Libraries:** [List any other significant libraries used]
+
+## Installation
+
+1. Clone the repository:
+   ```bash
+   git clone [your repository URL]
+
+
 # Project Documentation: Book Management System
 
 This document outlines the manual setup and usage of the database tables for a book management system, including books, users, return requests, and documents, along with user authentication and linking records using UUIDs. This assumes you are *not* using the Firebase console or CLI to manage your database directly.
@@ -91,9 +144,64 @@ You will be responsible for manually creating, reading, updating, and deleting r
 ## UUID Generation
 
 Use a UUID library in your chosen programming language to generate UUIDs manually.  For example, in Python:
+## Manual Data Management
 
-```python
-import uuid
+You will be responsible for manually creating, reading, updating, and deleting records in these tables using appropriate methods for your database system (e.g., SQL queries, API calls). This includes managing relationships between tables using the foreign keys.
 
-new_uuid = uuid.uuid4()
-print(new_uuid)
+1. **User Registration (Manual Process)**
+
+    - Capture the user's email and password.
+    - Hash the password securely using a strong hashing algorithm like bcrypt or Argon2.
+    - Generate a UUID for the userId.
+    - Insert the user's information into the Users table using the appropriate database commands.
+
+2. **Linking Records (Manual Process)**
+
+    - Generate UUIDs for the primary key.
+    - Insert records into the respective tables, ensuring foreign key fields reference the correct UUIDs in related tables.
+
+3. **UUID Generation**
+
+    You can use a UUID library in your chosen programming language to generate UUIDs manually. For example, in Python:
+
+    ```python
+    import uuid
+    new_uuid = uuid.uuid4()
+    print(new_uuid)
+    ```
+
+## Conclusion
+
+This Library Management System has been developed using the power of AI chatbots, including ChatGPT and Claude 3.5. These AI models enabled the creation of this application without writing a single line of code manually.
+
+By following the instructions above, you can easily deploy, manage, and use the system. All processes, including user authentication, book management, and document management, are efficiently handled.
+
+This application is free to use and comes with no restrictions.
+
+## Project Setup & Installation
+
+1. **Clone the repository:**
+
+    ```bash
+    git clone [your repository URL]
+    ```
+
+2. **Install dependencies:**
+
+    ```bash
+    npm install
+    ```
+
+3. **Set up Firebase:**
+    - Create a Firebase project in the Firebase console.
+    - Obtain your Firebase configuration details.
+    - Create a `.env` file in the root of your project and add your Firebase config.
+
+4. **Enable Authentication:**
+
+    In the Firebase Console, go to the Authentication section.
+    - Enable the desired authentication methods (email/password, Google, etc.).
+
+5. **Set up Firestore or Realtime Database:**
+
+    Choose either Firestore or Realtime Database and create your database structure.
